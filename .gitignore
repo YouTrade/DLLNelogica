@@ -1,0 +1,81 @@
+# ---------------------------------------------------------------------------
+# Saída de compilação .NET
+# ---------------------------------------------------------------------------
+[Bb]in/
+[Oo]bj/
+publish/
+*.publishsettings
+
+# ---------------------------------------------------------------------------
+# IDEs e editores
+# ---------------------------------------------------------------------------
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+*.sln.docstates
+
+# ---------------------------------------------------------------------------
+# Logs
+# A aplicação grava em "log/"; a ProfitDLL grava em "logs/". Nenhum dos dois
+# deve ser versionado: podem conter dados operacionais.
+# ---------------------------------------------------------------------------
+log/
+logs/
+*.log
+
+# ---------------------------------------------------------------------------
+# Artefatos gerados pela ProfitDLL ao lado do executável
+# ---------------------------------------------------------------------------
+MarketHours2/
+PopupManagerV2/
+database/
+roteamento/
+ServerAddr*.dat
+InfoSSLServerAddr*.dat
+HadesSSLServerAddr*.dat
+ReplayServerAddr*.dat
+ProfitChart.dat
+holidays.dat
+timezone2.dat
+newagents.dat
+*.profrun
+
+# ---------------------------------------------------------------------------
+# NuGet
+# ---------------------------------------------------------------------------
+packages/
+.nuget/
+*.nupkg
+*.snupkg
+
+# ---------------------------------------------------------------------------
+# Testes e cobertura
+# ---------------------------------------------------------------------------
+TestResults/
+*.trx
+*.coverage
+coverage*.xml
+
+# ---------------------------------------------------------------------------
+# Credenciais e chaves — nunca versionar
+# O src/appsettings.json versionado é o modelo, com os campos vazios.
+# ---------------------------------------------------------------------------
+appsettings.Development.json
+appsettings.Production.json
+appsettings.Local.json
+appsettings.*.local.json
+secrets.json
+*.pfx
+*.snk
+
+# ---------------------------------------------------------------------------
+# Sistema operacional
+# ---------------------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

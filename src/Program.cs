@@ -38,6 +38,8 @@ internal static class Program
     private static async Task<int> Main()
     {
         ConfigureConsoleOutput();
+        using var dailyLog = ConfigureDailyLog();
+        ConfigureUnhandledExceptionLogging();
         ConfigureWorkingDirectory();
         using var shutdownRequested = new CancellationTokenSource();
         var connectionState = new ConnectionStateMachine();
@@ -174,6 +176,44 @@ internal static class Program
         {
             // A codificação padrão será mantida quando a saída não permitir alteração.
         }
+    }
+
+    private static DailyLog? ConfigureDailyLog()
+    {
+        try
+        {
+            var dailyLog = DailyLog.Start(AppContext.BaseDirectory, "DLLNelogica");
+            Console.WriteLine($"Log diário inicializado em: {dailyLog.CurrentFilePath}");
+            return dailyLog;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"Aviso: não foi possível inicializar o log diário ({exception.GetType().Name}). " +
+                "A execução continuará somente com a saída no console.");
+            return null;
+        }
+    }
+
+    private static void ConfigureUnhandledExceptionLogging()
+    {
+        // O runtime imprime a falha diretamente no descritor nativo de erro, fora de Console.Error,
+        // o que deixaria o log diário sem registro do encerramento anormal.
+        AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
+        {
+            try
+            {
+                var failure = eventArgs.ExceptionObject as Exception;
+                Console.Error.WriteLine(
+                    $"Falha não tratada (encerrando={eventArgs.IsTerminating}): " +
+                    (failure?.ToString() ?? eventArgs.ExceptionObject?.ToString() ?? "detalhes indisponíveis"));
+                Console.Error.Flush();
+            }
+            catch
+            {
+                // O registro da falha não pode gerar uma segunda exceção durante o encerramento.
+            }
+        };
     }
 
     private static void ConfigureWorkingDirectory()

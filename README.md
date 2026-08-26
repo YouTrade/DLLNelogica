@@ -1,5 +1,7 @@
 # DLLNelogica — Projeto Educacional
 
+> Série **Programando o seu robô de trading com a DLL da Nelogica** — **Aula 02**
+
 Exemplo didático em C# que demonstra, do zero, como estabelecer uma conexão com a
 **ProfitDLL da Nelogica**: autenticar, confirmar que todos os serviços subiram e finalizar
 a sessão de forma limpa.
@@ -7,6 +9,37 @@ a sessão de forma limpa.
 Este material foi escrito para ensino. O objetivo é que você entenda **cada decisão** —
 por que um callback não pode bloquear, por que um retorno `NL_OK` não significa "conectado",
 por que um estado precisa ser travado e não reavaliado.
+
+---
+
+## Aula 02 — antes do Market Data, é preciso provar o que o sistema está fazendo
+
+Na **Aula 03** entra o **Market Data**. Mas receber dados de mercado sem conseguir registrar
+de forma determinística *o que* chegou, *quando* chegou e em *qual estado* a aplicação estava
+seria construir a etapa seguinte sem base para teste e diagnóstico.
+
+Por isso a Aula 02 é preparatória: aqui a aplicação ganhou um **relatório diário** e uma
+instrumentação mais completa do próprio ciclo de vida da conexão. A partir de agora ficam
+registrados:
+
+- a inicialização do arquivo diário;
+- o retorno de `DLLInitializeLogin`;
+- a evolução dos estados de conexão, um a um;
+- a confirmação dos quatro estados obrigatórios;
+- a solicitação de encerramento pelo usuário;
+- a finalização dos serviços e o retorno de `DLLFinalize`.
+
+Trecho de uma execução real:
+
+```
+2026-08-26 13:56:21 [DLLNelogica] DLLInitializeLogin retornou NL_OK; aguardando os estados de conexão.
+2026-08-26 13:56:23 [DLLNelogica] Conexão confirmada pelos quatro estados obrigatórios.
+2026-08-26 13:57:51 [DLLNelogica] Encerramento solicitado pelo usuário.
+2026-08-26 13:57:52 [DLLNelogica] DLLFinalize retornou 0 (0x00000000).
+```
+
+Pode parecer detalhe. Não é. Primeiro uma base confiável — depois o mercado passando por
+dentro dela.
 
 ---
 
@@ -20,7 +53,8 @@ O que ele **não** tem:
 - Nenhuma proteção de credenciais — elas ficam em texto puro no `appsettings.json`
 - Nenhuma reconexão automática, retentativa ou recuperação de falha
 - Nenhum tratamento de ordens, posições, contas ou dados de mercado
-- Nenhuma auditoria, persistência ou monitoramento
+- Nenhuma auditoria, persistência de dados ou monitoramento
+- Nenhuma retenção ou expurgo do relatório — os arquivos diários se acumulam indefinidamente
 
 **Não use este código para operar dinheiro real.** Use-o para aprender como a interoperabilidade
 com a ProfitDLL funciona e depois construa o seu, com os cuidados que a sua operação exige.
@@ -29,13 +63,16 @@ com a ProfitDLL funciona e depois construa o seu, com os cuidados que a sua oper
 
 ## O que o projeto faz
 
-1. Lê as credenciais de `src/appsettings.json`
-2. Carrega a `ProfitDLL.dll` (Win64) explicitamente do diretório da aplicação
-3. Chama `DLLInitializeLogin` uma única vez
-4. Acompanha os **quatro estados** que a DLL informa por callback
-5. Anuncia a conexão apenas quando os quatro estiverem satisfeitos
-6. Mantém o processo vivo até `Ctrl+C`
-7. Chama `DLLFinalize` e drena os eventos pendentes antes de sair
+1. Abre o relatório diário em `log/AAAAMMDD.log`, ao lado do executável
+2. Lê as credenciais de `src/appsettings.json`
+3. Carrega a `ProfitDLL.dll` (Win64) explicitamente do diretório da aplicação
+4. Chama `DLLInitializeLogin` uma única vez
+5. Acompanha os **quatro estados** que a DLL informa por callback
+6. Anuncia a conexão apenas quando os quatro estiverem satisfeitos
+7. Mantém o processo vivo até `Ctrl+C`
+8. Chama `DLLFinalize` e drena os eventos pendentes antes de sair
+
+Cada um desses passos deixa rastro no relatório.
 
 ### Os quatro estados da conexão
 
@@ -55,6 +92,43 @@ Três detalhes que só se descobrem observando a DLL em execução, e que este p
   por isso cada estado é *travado* na primeira vez que fica válido, e não reavaliado a cada evento.
 - **Market Data 5 e 6 continuam sendo "conectado".** São avisos de degradação e de fila local
   parada, não desconexão.
+
+---
+
+## O relatório diário
+
+Não há uma API de log espalhada pela aplicação: `Console.Out` e `Console.Error` são
+redirecionados para um *tee* que grava nos dois destinos. Tudo o que aparece no console vai
+para o arquivo, com carimbo de data e hora.
+
+```
+<diretório do executável>/
+└── log/
+    └── 20260826.log
+```
+
+- **Um arquivo por dia**, nomeado `AAAAMMDD.log`. A rotação acontece sozinha na virada do
+  dia, sem reiniciar a aplicação.
+- **Cada linha carimbada** com `AAAA-MM-DD HH:mm:ss [DLLNelogica]`.
+- **Gravação imediata**: cada escrita é descarregada em disco, então as linhas já registradas
+  sobrevivem a um encerramento abrupto do processo.
+- **`stdout` e `stderr` no mesmo arquivo**, na ordem em que aconteceram.
+- **Falhas não tratadas entram no relatório** com tipo, mensagem e *stack trace* — o runtime
+  imprimiria isso fora do `Console.Error`, e o registro se perderia.
+- **O arquivo vem primeiro, o console depois**: um console indisponível (janela fechada, pipe
+  quebrado, execução como serviço) não interrompe a gravação em disco.
+- **UTF-8 sem BOM**, com acentuação preservada.
+- **Um gravador por arquivo.** Uma segunda instância no mesmo diretório não sobrescreve o
+  relatório da primeira: ela avisa e segue apenas com o console.
+- Se a pasta não puder ser criada, a aplicação **avisa e continua** — a ausência de log nunca
+  derruba a execução.
+
+> **`log/` é da aplicação. `Logs/` é da ProfitDLL.**
+>
+> A DLL da Nelogica grava os próprios arquivos em uma pasta `Logs/` ao lado do executável
+> (`LogDesktop`, `LogStructuredBlb`, `LogPerf` e outros). Em poucos minutos de operação eles
+> passam facilmente das dezenas de MB. Os nomes diferentes mantêm o seu relatório separado
+> desse volume — e é por isso que a pasta da aplicação é `log`, no singular.
 
 ---
 
@@ -96,6 +170,9 @@ dotnet run --project src/DLLNelogica.csproj
 **4. Encerre com `Ctrl+C`.** O encerramento é controlado: a aplicação chama `DLLFinalize`,
 aguarda o retorno e só então termina.
 
+**5. Confira o relatório.** O arquivo do dia fica ao lado do executável — com `dotnet run`,
+em `src/bin/<plataforma>/<configuração>/net9.0/log/AAAAMMDD.log`.
+
 ### Suíte de testes
 
 ```
@@ -109,26 +186,21 @@ o mercado e não usam rede — rodam em qualquer máquina, a qualquer hora, sem 
 
 ## Cuidados importantes
 
-**Nunca versione o `appsettings.json` preenchido.** Se for colocar este projeto em um
-repositório Git, crie um `.gitignore` antes do primeiro commit contendo pelo menos:
+**Nunca versione o `appsettings.json` preenchido.** O repositório já traz um `.gitignore`
+que mantém fora do controle de versão a saída de compilação (`bin/`, `obj/`), os arquivos da
+IDE (`.vs/`), o relatório da aplicação (`log/`), os artefatos da ProfitDLL (`Logs/`,
+`database/`, `PopupManagerV2/`, `roteamento/`, `MarketHours2/` e os `.dat` que ela gera) e os
+arquivos de credenciais locais.
 
-```
-appsettings.json
-ProfitDLL.dll
-Logs/
-database/
-PopupManagerV2/
-*.log
-bin/
-obj/
-.vs/
-```
+O `src/appsettings.json` versionado é apenas o **modelo, com os campos vazios**. Como ele já
+está rastreado pelo Git, o `.gitignore` não o protege: preencha-o só na sua cópia e confira
+antes de cada commit. Credenciais commitadas continuam no histórico mesmo depois de apagadas
+do arquivo.
 
-Credenciais commitadas continuam no histórico mesmo depois de apagadas do arquivo.
-
-**A ProfitDLL escreve arquivos no diretório de trabalho.** Ao inicializar, ela cria
-`Logs/`, `database/`, `PopupManagerV2/`, algumas DLLs do OpenSSL e arquivos `.dat`. Isso é
-esperado — só não deixe esses artefatos entrarem no seu controle de versão.
+**A ProfitDLL escreve arquivos no diretório de trabalho.** Ao inicializar, ela cria `Logs/`,
+`database/`, `PopupManagerV2/`, `MarketHours2/`, `roteamento/`, algumas DLLs do OpenSSL e
+arquivos `.dat`. Isso é esperado — só não deixe esses artefatos entrarem no seu controle de
+versão.
 
 **Atenção ao `Erro.log`.** Em caso de falha, a ProfitDLL pode gravar um arquivo de erro que
 **contém a sua chave de ativação em texto puro**. Se ele aparecer, apague — e nunca o envie
@@ -152,9 +224,13 @@ DLLNelogica.sln
 │   ├── Configuration/              leitura e validação do JSON
 │   ├── Connection/                 máquina de estados da conexão
 │   ├── Interop/                    P/Invoke, delegates e tipos nativos
+│   ├── Logging/                    relatório diário com rotação por data
 │   └── Properties/
 └── tests/                          suíte determinística (24 cenários)
 ```
+
+Em tempo de execução, ao lado do executável, aparecem ainda a pasta `log/` (o relatório da
+aplicação) e os artefatos da própria ProfitDLL — nenhum deles versionado.
 
 A camada `Interop/` importa **apenas** o necessário para o ciclo de vida da conexão:
 `DLLInitializeLogin`, `DLLFinalize`, os 11 delegates exigidos pela assinatura, o struct
