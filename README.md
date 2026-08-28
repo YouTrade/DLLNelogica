@@ -244,6 +244,7 @@ DLLNelogica.sln
 │   ├── Connection/                 estados, fila e máquina de conexão
 │   ├── Interop/                    P/Invoke, sessão, callbacks e guardas de processo
 │   └── Logging/                    fila assíncrona, tee e arquivo diário
+└── tools/                         utilitários de inspeção do código
 ```
 
 Em tempo de execução, ao lado do executável, aparecem ainda a pasta `log/` (o relatório da
