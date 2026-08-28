@@ -16,7 +16,7 @@ por que um estado precisa ser travado e não reavaliado.
 
 Na **Aula 03** entra o **Market Data**. Mas receber dados de mercado sem conseguir registrar
 de forma determinística *o que* chegou, *quando* chegou e em *qual estado* a aplicação estava
-seria construir a etapa seguinte sem base para teste e diagnóstico.
+seria construir a etapa seguinte sem base para observação e diagnóstico.
 
 Por isso a Aula 02 é preparatória: aqui a aplicação ganhou um **relatório diário** e uma
 instrumentação mais completa do próprio ciclo de vida da conexão. A partir de agora ficam
@@ -54,6 +54,7 @@ O que ele **não** tem:
 - Nenhuma reconexão automática, retentativa ou recuperação de falha
 - Nenhum tratamento de ordens, posições, contas ou dados de mercado
 - Nenhuma auditoria, persistência de dados ou monitoramento
+- Nenhuma suíte automatizada de testes — a validação disponível é compilação estrita e execução manual
 - Nenhuma retenção ou expurgo do relatório — os arquivos diários se acumulam indefinidamente
 
 **Não use este código para operar dinheiro real.** Use-o para aprender como a interoperabilidade
@@ -67,10 +68,11 @@ com a ProfitDLL funciona e depois construa o seu, com os cuidados que a sua oper
 2. Lê as credenciais de `src/appsettings.json`
 3. Carrega a `ProfitDLL.dll` (Win64) explicitamente do diretório da aplicação
 4. Chama `DLLInitializeLogin` uma única vez
-5. Acompanha os **quatro estados** que a DLL informa por callback
-6. Anuncia a conexão apenas quando os quatro estiverem satisfeitos
-7. Mantém o processo vivo até `Ctrl+C`
-8. Chama `DLLFinalize` e drena os eventos pendentes antes de sair
+5. Publica os estados recebidos em uma fila e os processa fora da thread nativa
+6. Registra cada estado antes de aplicar a transição que ele causa
+7. Anuncia a conexão apenas quando os quatro estiverem satisfeitos
+8. Mantém o processo vivo até `Ctrl+C`
+9. Chama `DLLFinalize` e drena os eventos pendentes antes de sair
 
 Cada um desses passos deixa rastro no relatório.
 
@@ -98,8 +100,8 @@ Três detalhes que só se descobrem observando a DLL em execução, e que este p
 ## O relatório diário
 
 Não há uma API de log espalhada pela aplicação: `Console.Out` e `Console.Error` são
-redirecionados para um *tee* que grava nos dois destinos. Tudo o que aparece no console vai
-para o arquivo, com carimbo de data e hora.
+redirecionados para um *tee*. Cada escrita entra primeiro em uma fila e segue para o console;
+um gravador dedicado persiste a fila em segundo plano com carimbo de data e hora.
 
 ```
 <diretório do executável>/
@@ -110,13 +112,14 @@ para o arquivo, com carimbo de data e hora.
 - **Um arquivo por dia**, nomeado `AAAAMMDD.log`. A rotação acontece sozinha na virada do
   dia, sem reiniciar a aplicação.
 - **Cada linha carimbada** com `AAAA-MM-DD HH:mm:ss [DLLNelogica]`.
-- **Gravação imediata**: cada escrita é descarregada em disco, então as linhas já registradas
-  sobrevivem a um encerramento abrupto do processo.
-- **`stdout` e `stderr` no mesmo arquivo**, na ordem em que aconteceram.
+- **Callbacks não fazem I/O**: a thread nativa apenas publica eventos e retorna.
+- **Flush periódico**: o gravador descarrega o arquivo no máximo a cada segundo e também
+  durante `Flush` explícito e encerramento ordenado. Uma queda abrupta pode perder o último intervalo.
+- **`stdout` e `stderr` no mesmo arquivo**, na ordem em que entram na fila compartilhada.
 - **Falhas não tratadas entram no relatório** com tipo, mensagem e *stack trace* — o runtime
   imprimiria isso fora do `Console.Error`, e o registro se perderia.
-- **O arquivo vem primeiro, o console depois**: um console indisponível (janela fechada, pipe
-  quebrado, execução como serviço) não interrompe a gravação em disco.
+- **A fila do arquivo vem primeiro, o console depois**: se o console falhar, a entrada já foi
+  entregue ao gravador dedicado.
 - **UTF-8 sem BOM**, com acentuação preservada.
 - **Um gravador por arquivo.** Uma segunda instância no mesmo diretório não sobrescreve o
   relatório da primeira: ela avisa e segue apenas com o console.
@@ -173,17 +176,6 @@ aguarda o retorno e só então termina.
 **5. Confira o relatório.** O arquivo do dia fica ao lado do executável — com `dotnet run`,
 em `src/bin/<plataforma>/<configuração>/net9.0/log/AAAAMMDD.log`.
 
-### Suíte de testes
-
-```
-dotnet run --project tests/DLLNelogica.StateTests.csproj -c Release
-```
-
-São 24 cenários determinísticos da máquina de estados. **Não** carregam a DLL, não acessam
-o mercado e não usam rede — rodam em qualquer máquina, a qualquer hora, sem credenciais.
-
----
-
 ## Cuidados importantes
 
 **Nunca versione o `appsettings.json` preenchido.** O repositório já traz um `.gitignore`
@@ -206,7 +198,8 @@ versão.
 **contém a sua chave de ativação em texto puro**. Se ele aparecer, apague — e nunca o envie
 para ninguém nem o publique em um repositório.
 
-**Uma inicialização por processo.** Testes deste projeto mostraram que, após um `DLLFinalize`,
+**Uma inicialização por processo.** Experimentos realizados durante o desenvolvimento mostraram
+que, após um `DLLFinalize`,
 uma nova chamada a `DLLInitializeLogin` no **mesmo processo** retorna `NL_OK` mas nunca
 completa: apenas o estado de login chega, e roteamento, market data e ativação não retornam.
 Para reconectar, inicie um processo novo.
@@ -217,16 +210,18 @@ Para reconectar, inicie um processo novo.
 
 ```
 DLLNelogica.sln
+├── .editorconfig                  namespaces e regras dos analisadores
+├── Directory.Build.props          perfil estrito compartilhado pela solução
+├── CodeMetricsConfig.txt          limites de complexidade e acoplamento
 ├── src/
-│   ├── Program.cs                  fluxo principal: config, conexão, encerramento
+│   ├── Program.cs                  composition root
 │   ├── appsettings.json            credenciais (preencha)
 │   ├── ProfitDLL.dll               biblioteca nativa da Nelogica
+│   ├── Application/                execução, console e encerramento
 │   ├── Configuration/              leitura e validação do JSON
-│   ├── Connection/                 máquina de estados da conexão
-│   ├── Interop/                    P/Invoke, delegates e tipos nativos
-│   ├── Logging/                    relatório diário com rotação por data
-│   └── Properties/
-└── tests/                          suíte determinística (24 cenários)
+│   ├── Connection/                 estados, fila e máquina de conexão
+│   ├── Interop/                    P/Invoke, sessão, callbacks e guardas de processo
+│   └── Logging/                    fila assíncrona, tee e arquivo diário
 ```
 
 Em tempo de execução, ao lado do executável, aparecem ainda a pasta `log/` (o relatório da
@@ -234,7 +229,12 @@ aplicação) e os artefatos da própria ProfitDLL — nenhum deles versionado.
 
 A camada `Interop/` importa **apenas** o necessário para o ciclo de vida da conexão:
 `DLLInitializeLogin`, `DLLFinalize`, os 11 delegates exigidos pela assinatura, o struct
-`TAssetID` e o enum `NResult`. Nada de ordens, posições ou livro.
+`TAssetID` e o enum `NResult`. As cinco instâncias de delegate usadas pela aplicação ficam
+enraizadas em `ProfitCallbackRoots` até o processo terminar. Nada de ordens ou posições.
+
+Os callbacks de market data ainda não processam conteúdo. Na Aula 03 eles deverão publicar
+em canais limitados, com política explícita de overflow por tipo de evento. É proibido fazer
+I/O, bloquear ou executar regra de negócio diretamente na thread de callback.
 
 ---
 
