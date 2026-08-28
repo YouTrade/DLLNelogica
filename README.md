@@ -1,6 +1,7 @@
 # DLLNelogica — Projeto Educacional
 
-> Série **Programando o seu robô de trading com a DLL da Nelogica** — **Aula 02**
+> Série **Programando o seu robô de trading com a DLL da Nelogica** — **Aula 02 concluída,
+> com retrofit arquitetural pós-aula. A Aula 03 ainda não foi iniciada.**
 
 Exemplo didático em C# que demonstra, do zero, como estabelecer uma conexão com a
 **ProfitDLL da Nelogica**: autenticar, confirmar que todos os serviços subiram e finalizar
@@ -9,6 +10,20 @@ a sessão de forma limpa.
 Este material foi escrito para ensino. O objetivo é que você entenda **cada decisão** —
 por que um callback não pode bloquear, por que um retorno `NL_OK` não significa "conectado",
 por que um estado precisa ser travado e não reavaliado.
+
+---
+
+## Evolução da série
+
+| Marco | Data | Resultado principal |
+|-------|------|---------------------|
+| Aula 01 | 2026-08-24 | Conexão, quatro estados obrigatórios e ciclo de vida da ProfitDLL |
+| Aula 02 | 2026-08-26 | Relatório diário e observabilidade antes do Market Data |
+| Retrofit pós-Aula 02 | 2026-08-28 | Arquitetura, DI manual, resiliência de callbacks e logging assíncrono |
+| Aula 03 | Planejada | Consumo de Market Data — ainda não implementado |
+
+O histórico curado, incluindo o estado original da Aula 01 e as decisões do retrofit, está
+em [CHANGELOG.md](CHANGELOG.md). O README descreve sempre o comportamento atual do projeto.
 
 ---
 
@@ -212,6 +227,7 @@ Para reconectar, inicie um processo novo.
 ```
 DLLNelogica.sln
 ├── .editorconfig                  namespaces e regras dos analisadores
+├── CHANGELOG.md                   evolução por aula e marcos intermediários
 ├── Directory.Build.props          perfil estrito compartilhado pela solução
 ├── CodeMetricsConfig.txt          limites de complexidade e acoplamento
 ├── src/
