@@ -5,6 +5,7 @@ namespace DLLNelogica.Logging;
 internal sealed class DailyLogSink : IDisposable
 {
     private static readonly TimeSpan FlushInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan SynchronousWaitTimeout = TimeSpan.FromSeconds(2);
     private readonly Channel<LogCommand> _commands =
         Channel.CreateUnbounded<LogCommand>(new UnboundedChannelOptions
         {
@@ -44,7 +45,7 @@ internal sealed class DailyLogSink : IDisposable
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         if (_commands.Writer.TryWrite(LogCommand.Flush(consoleWriter, completion)))
         {
-            completion.Task.GetAwaiter().GetResult();
+            WaitWithTimeout(completion.Task);
         }
     }
 
@@ -59,7 +60,7 @@ internal sealed class DailyLogSink : IDisposable
 
         try
         {
-            _writerTask.GetAwaiter().GetResult();
+            WaitWithTimeout(_writerTask);
         }
         catch (Exception exception)
         {
@@ -87,6 +88,7 @@ internal sealed class DailyLogSink : IDisposable
                     }
 
                     DrainAvailableCommands();
+                    _fileWriter.Flush();
                     readReady = _commands.Reader.WaitToReadAsync().AsTask();
                 }
 
@@ -149,6 +151,11 @@ internal sealed class DailyLogSink : IDisposable
         }
     }
 
+    private static void WaitWithTimeout(Task completion)
+    {
+        _ = completion.Wait(SynchronousWaitTimeout);
+    }
+
     private static void WriteToConsole(TextWriter consoleWriter, string value)
     {
         try
@@ -171,18 +178,5 @@ internal sealed class DailyLogSink : IDisposable
         {
             // Console indisponível não pode interromper o gravador em disco.
         }
-    }
-
-    private readonly record struct LogCommand(
-        DateTime Timestamp,
-        TextWriter ConsoleWriter,
-        string? Value,
-        TaskCompletionSource? FlushCompletion)
-    {
-        internal static LogCommand Write(DateTime timestamp, TextWriter consoleWriter, string value) =>
-            new(timestamp, consoleWriter, value, null);
-
-        internal static LogCommand Flush(TextWriter consoleWriter, TaskCompletionSource completion) =>
-            new(default, consoleWriter, null, completion);
     }
 }

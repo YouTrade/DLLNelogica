@@ -113,8 +113,9 @@ um gravador dedicado persiste a fila em segundo plano com carimbo de data e hora
   dia, sem reiniciar a aplicação.
 - **Cada linha carimbada** com `AAAA-MM-DD HH:mm:ss [DLLNelogica]`.
 - **Callbacks não fazem I/O**: a thread nativa apenas publica eventos e retorna.
-- **Flush periódico**: o gravador descarrega o arquivo no máximo a cada segundo e também
-  durante `Flush` explícito e encerramento ordenado. Uma queda abrupta pode perder o último intervalo.
+- **Flush por lote**: o gravador descarrega o arquivo depois de cada lote consumido. Um timer de
+  um segundo cobre períodos ociosos; esperas síncronas têm limite de dois segundos para que um
+  disco travado não congele o processo. Uma queda abrupta ainda pode perder o lote em andamento.
 - **`stdout` e `stderr` no mesmo arquivo**, na ordem em que entram na fila compartilhada.
 - **Falhas não tratadas entram no relatório** com tipo, mensagem e *stack trace* — o runtime
   imprimiria isso fora do `Console.Error`, e o registro se perderia.
@@ -221,8 +222,7 @@ DLLNelogica.sln
 │   ├── Configuration/              leitura e validação do JSON
 │   ├── Connection/                 estados, fila e máquina de conexão
 │   ├── Interop/                    P/Invoke, sessão, callbacks e guardas de processo
-│   ├── Logging/                    fila assíncrona, tee e arquivo diário
-│   └── MarketData/                 política de canal limitado para a Aula 03
+│   └── Logging/                    fila assíncrona, tee e arquivo diário
 ```
 
 Em tempo de execução, ao lado do executável, aparecem ainda a pasta `log/` (o relatório da
@@ -233,10 +233,9 @@ A camada `Interop/` importa **apenas** o necessário para o ciclo de vida da con
 `TAssetID` e o enum `NResult`. As cinco instâncias de delegate usadas pela aplicação ficam
 enraizadas em `ProfitCallbackRoots` até o processo terminar. Nada de ordens ou posições.
 
-Os callbacks de market data ainda não processam conteúdo. `MarketDataChannel` prepara canais
-limitados com publicação não bloqueante e contador de rejeições; na Aula 03, cada tipo de
-evento ainda deverá definir capacidade e tratamento de overflow próprios. É proibido fazer
-I/O, bloquear ou executar regra de negócio diretamente na thread de callback.
+Os callbacks de market data ainda não processam conteúdo. Os canais e as políticas de overflow
+serão introduzidos somente na Aula 03, junto dos consumidores reais de cada evento. Continua
+proibido fazer I/O, bloquear ou executar regra de negócio diretamente na thread de callback.
 
 ---
 
