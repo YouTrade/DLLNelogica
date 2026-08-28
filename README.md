@@ -155,11 +155,14 @@ um gravador dedicado persiste a fila em segundo plano com carimbo de data e hora
 
 - Windows **x64**
 - **.NET 9 SDK**
-- `ProfitDLL.dll` versão **4.0.0.41**, variante **Win64**
+- `ProfitDLL.dll` versão **4.0.0.41**, variante **Win64** — **já incluída** em `src/`
 - Conta Nelogica com **roteamento habilitado** e licença ativa
 
 > A DLL de 32 bits **não funciona** neste projeto. O processo é compilado como x64 e a
 > arquitetura precisa coincidir.
+
+> O repositório inclui a `ProfitDLL.dll` (~49 MB), então o clone é proporcionalmente maior.
+> Ter o binário **não dispensa** a licença Nelogica: sem conta ativa a conexão não completa.
 
 ---
 
@@ -177,7 +180,7 @@ um gravador dedicado persiste a fila em segundo plano com carimbo de data e hora
 }
 ```
 
-**2. Confirme que `src/ProfitDLL.dll` é a versão Win64.**
+**2. Nada a baixar:** a `src/ProfitDLL.dll` (Win64) já acompanha o repositório.
 
 **3. Compile e execute:**
 
@@ -228,8 +231,10 @@ Para reconectar, inicie um processo novo.
 DLLNelogica.sln
 ├── .editorconfig                  namespaces e regras dos analisadores
 ├── CHANGELOG.md                   evolução por aula e marcos intermediários
+├── LICENSE                        MIT — cobre o código deste projeto
 ├── Directory.Build.props          perfil estrito compartilhado pela solução
 ├── CodeMetricsConfig.txt          limites de complexidade e acoplamento
+├── THIRD-PARTY-NOTICES.md         titularidade e redistribuição da ProfitDLL
 ├── src/
 │   ├── Program.cs                  composition root
 │   ├── appsettings.json            credenciais (preencha)
@@ -255,11 +260,29 @@ proibido fazer I/O, bloquear ou executar regra de negócio diretamente na thread
 
 ---
 
+## Licença
+
+O **código deste projeto** é distribuído sob a licença [MIT](LICENSE): você pode copiar,
+adaptar e usar, inclusive comercialmente, mantendo o aviso de copyright.
+
+A licença MIT **não se estende à `ProfitDLL.dll`**, que pertence à Nelogica e permanece
+sujeita aos termos dela — veja [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+---
+
 ## Sobre a ProfitDLL
 
 A `ProfitDLL.dll` é propriedade da **Nelogica** e está sujeita aos termos de licenciamento
-dela. Este projeto não concede nenhum direito sobre a biblioteca. Para obter a versão
-oficial, a documentação e o suporte, procure a Nelogica diretamente.
+dela. Este projeto não concede nenhum direito sobre a biblioteca e não a modifica.
+
+**A biblioteca é distribuída publicamente pela Nelogica e a sua redistribuição é
+permitida.** Por isso a `ProfitDLL.dll` acompanha este repositório, em `src/`, para que o
+exemplo compile e execute sem depender de um download externo.
+
+Ter o binário não substitui a licença: o uso exige conta Nelogica com licença ativa. Para a
+versão oficial mais recente, a documentação e o suporte, procure a Nelogica diretamente.
+
+As atribuições de terceiros estão em [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ---
 
