@@ -221,7 +221,8 @@ DLLNelogica.sln
 │   ├── Configuration/              leitura e validação do JSON
 │   ├── Connection/                 estados, fila e máquina de conexão
 │   ├── Interop/                    P/Invoke, sessão, callbacks e guardas de processo
-│   └── Logging/                    fila assíncrona, tee e arquivo diário
+│   ├── Logging/                    fila assíncrona, tee e arquivo diário
+│   └── MarketData/                 política de canal limitado para a Aula 03
 ```
 
 Em tempo de execução, ao lado do executável, aparecem ainda a pasta `log/` (o relatório da
@@ -232,8 +233,9 @@ A camada `Interop/` importa **apenas** o necessário para o ciclo de vida da con
 `TAssetID` e o enum `NResult`. As cinco instâncias de delegate usadas pela aplicação ficam
 enraizadas em `ProfitCallbackRoots` até o processo terminar. Nada de ordens ou posições.
 
-Os callbacks de market data ainda não processam conteúdo. Na Aula 03 eles deverão publicar
-em canais limitados, com política explícita de overflow por tipo de evento. É proibido fazer
+Os callbacks de market data ainda não processam conteúdo. `MarketDataChannel` prepara canais
+limitados com publicação não bloqueante e contador de rejeições; na Aula 03, cada tipo de
+evento ainda deverá definir capacidade e tratamento de overflow próprios. É proibido fazer
 I/O, bloquear ou executar regra de negócio diretamente na thread de callback.
 
 ---
