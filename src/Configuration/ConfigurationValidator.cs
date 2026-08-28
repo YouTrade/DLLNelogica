@@ -1,8 +1,8 @@
-namespace DLLNelogica;
+namespace DLLNelogica.Configuration;
 
 internal static class ConfigurationValidator
 {
-    internal static List<string> GetIssues(CredenciaisOptions credentials)
+    internal static List<string> GetIssues(CredentialsOptions credentials)
     {
         var issues = new List<string>();
 
@@ -12,6 +12,11 @@ internal static class ConfigurationValidator
 
         return issues;
     }
+
+    internal static bool HasOuterWhitespace(CredentialsOptions credentials) =>
+        HasOuterWhitespace(credentials.Key) ||
+        HasOuterWhitespace(credentials.User) ||
+        HasOuterWhitespace(credentials.Password);
 
     private static void ValidateValue(string value, string propertyName, List<string> issues)
     {
@@ -24,4 +29,7 @@ internal static class ConfigurationValidator
             issues.Add($"{propertyName} contém apenas espaços.");
         }
     }
+
+    private static bool HasOuterWhitespace(string value) =>
+        value.Length > 0 && (char.IsWhiteSpace(value[0]) || char.IsWhiteSpace(value[^1]));
 }

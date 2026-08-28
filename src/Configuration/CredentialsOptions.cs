@@ -1,6 +1,6 @@
-namespace DLLNelogica;
+namespace DLLNelogica.Configuration;
 
-internal sealed class CredenciaisOptions
+internal sealed class CredentialsOptions
 {
     public string Key { get; init; } = string.Empty;
 

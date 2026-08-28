@@ -1,0 +1,5 @@
+# Limiares de revisão automática. Arquivos declarativos de Interop permanecem
+# juntos porque espelham o contrato nativo e não concentram lógica executável.
+CA1502(Method): 20
+CA1505(Type): 20
+CA1506(Type): 30

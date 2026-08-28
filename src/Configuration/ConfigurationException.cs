@@ -1,4 +1,4 @@
-namespace DLLNelogica;
+namespace DLLNelogica.Configuration;
 
 internal sealed class ConfigurationException : Exception
 {

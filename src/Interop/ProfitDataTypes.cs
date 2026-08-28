@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace DLLNelogica;
+namespace DLLNelogica.Interop;
 
 internal enum NResult : int
 {

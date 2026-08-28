@@ -1,131 +1,64 @@
-namespace DLLNelogica;
-
-internal enum MarketDataHealth
-{
-    Unknown,
-    Connected,
-    Degraded,
-    Critical
-}
-
-internal readonly record struct ConnectionWaitResult(bool IsConnected, string Message)
-{
-    internal static ConnectionWaitResult Connected() =>
-        new(true, "Login, roteamento, market data e ativação estão prontos.");
-
-    internal static ConnectionWaitResult Failed(string message) => new(false, message);
-}
+namespace DLLNelogica.Connection;
 
 internal sealed class ConnectionStateMachine
 {
-    private const int LoginStateType = 0;
-    private const int RoutingStateType = 1;
-    private const int MarketDataStateType = 2;
-    private const int ActivationStateType = 3;
     private readonly object _sync = new();
-    private readonly TaskCompletionSource<ConnectionWaitResult> _completion =
+    private readonly TaskCompletionSource<ConnectionWaitResult> _initialConnection =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _loginReady;
     private bool _routingReady;
-    private bool _marketDataReady;
+    private bool _marketDataReached;
     private bool _activationValid;
+    private bool _initialConnectionReady;
     private MarketDataHealth _marketDataHealth;
     private int _readinessTransitionCount;
 
-    internal bool IsLoginReady
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _loginReady;
-            }
-        }
-    }
-
-    internal bool IsRoutingReady
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _routingReady;
-            }
-        }
-    }
-
-    internal bool IsMarketDataReady
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _marketDataReady;
-            }
-        }
-    }
-
-    internal bool IsActivationValid
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _activationValid;
-            }
-        }
-    }
-
-    internal MarketDataHealth CurrentMarketDataHealth
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _marketDataHealth;
-            }
-        }
-    }
-
-    internal int ReadinessTransitionCount
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _readinessTransitionCount;
-            }
-        }
-    }
-
-    internal void Process(int stateType, int result)
+    internal void Process(ConnectionStateType stateType, int result)
     {
         lock (_sync)
         {
             switch (stateType)
             {
-                case LoginStateType:
+                case ConnectionStateType.Login:
                     ProcessLogin(result);
                     break;
-                case RoutingStateType:
-                    _routingReady |= result is 2 or 5;
+                case ConnectionStateType.Routing:
+                    _routingReady |= result is
+                        (int)RoutingStateResult.ServerConnected or
+                        (int)RoutingStateResult.BrokerConnected;
                     break;
-                case MarketDataStateType:
+                case ConnectionStateType.MarketData:
                     ProcessMarketData(result);
                     break;
-                case ActivationStateType:
-                    _activationValid = result == 0;
+                case ConnectionStateType.Activation:
+                    _activationValid = result == (int)ActivationStateResult.Valid;
                     break;
             }
 
             if (_loginReady &&
                 _routingReady &&
-                _marketDataReady &&
+                _marketDataReached &&
                 _activationValid &&
-                _completion.TrySetResult(ConnectionWaitResult.Connected()))
+                _initialConnection.TrySetResult(ConnectionWaitResult.Connected()))
             {
+                _initialConnectionReady = true;
                 _readinessTransitionCount++;
             }
+        }
+    }
+
+    internal ConnectionStateSnapshot GetSnapshot()
+    {
+        lock (_sync)
+        {
+            return new ConnectionStateSnapshot(
+                _loginReady,
+                _routingReady,
+                _marketDataReached,
+                _activationValid,
+                _marketDataHealth,
+                _initialConnectionReady,
+                _readinessTransitionCount);
         }
     }
 
@@ -140,7 +73,7 @@ internal sealed class ConnectionStateMachine
 
         try
         {
-            return await _completion.Task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+            return await _initialConnection.Task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
@@ -155,15 +88,20 @@ internal sealed class ConnectionStateMachine
 
     private void ProcessLogin(int result)
     {
-        if (result == 0)
+        if (result == (int)LoginStateResult.Connected)
         {
             _loginReady = true;
             return;
         }
 
-        if (result is 1 or 2 or 3 or 4 or 200)
+        if (result is
+            (int)LoginStateResult.InvalidLogin or
+            (int)LoginStateResult.InvalidPassword or
+            (int)LoginStateResult.BlockedPassword or
+            (int)LoginStateResult.ExpiredPassword or
+            (int)LoginStateResult.UnknownFailure)
         {
-            _completion.TrySetResult(ConnectionWaitResult.Failed(DescribeLoginFailure(result)));
+            _initialConnection.TrySetResult(ConnectionWaitResult.Failed(DescribeLoginFailure(result)));
         }
     }
 
@@ -171,13 +109,13 @@ internal sealed class ConnectionStateMachine
     {
         _marketDataHealth = result switch
         {
-            4 => MarketDataHealth.Connected,
-            5 => MarketDataHealth.Degraded,
-            6 => MarketDataHealth.Critical,
+            (int)MarketDataStateResult.Connected => MarketDataHealth.Connected,
+            (int)MarketDataStateResult.Degraded => MarketDataHealth.Degraded,
+            (int)MarketDataStateResult.Critical => MarketDataHealth.Critical,
             _ => MarketDataHealth.Unknown
         };
 
-        _marketDataReady |= result == 4;
+        _marketDataReached |= result == (int)MarketDataStateResult.Connected;
     }
 
     private string DescribePendingStates()
@@ -196,7 +134,7 @@ internal sealed class ConnectionStateMachine
                 pendingStates.Add("roteamento");
             }
 
-            if (!_marketDataReady)
+            if (!_marketDataReached)
             {
                 pendingStates.Add("market data");
             }
@@ -214,11 +152,11 @@ internal sealed class ConnectionStateMachine
 
     private static string DescribeLoginFailure(int result) => result switch
     {
-        1 => "Login inválido (resultado 1).",
-        2 => "Senha inválida (resultado 2).",
-        3 => "Senha bloqueada (resultado 3).",
-        4 => "Senha expirada (resultado 4).",
-        200 => "Falha de login desconhecida (resultado 200).",
+        (int)LoginStateResult.InvalidLogin => "Login inválido (resultado 1).",
+        (int)LoginStateResult.InvalidPassword => "Senha inválida (resultado 2).",
+        (int)LoginStateResult.BlockedPassword => "Senha bloqueada (resultado 3).",
+        (int)LoginStateResult.ExpiredPassword => "Senha expirada (resultado 4).",
+        (int)LoginStateResult.UnknownFailure => "Falha de login desconhecida (resultado 200).",
         _ => $"Falha de login (resultado {result})."
     };
 }
