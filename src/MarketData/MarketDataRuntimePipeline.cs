@@ -49,9 +49,9 @@ internal sealed class MarketDataRuntimePipeline
             !ProfitProcessLifetime.HasCallbackFailure;
 
         TryWriteLine(
-            $"MARKET gate Sprint 3 | recebidos={_metrics.ReceivedPriceChanges} | " +
-            $"descartados={_metrics.DroppedPriceChanges} | " +
-            $"tickers_inválidos={_metrics.InvalidTickerCount}");
+            $"Resumo de market data | cotações recebidas={_metrics.ReceivedPriceChanges} | " +
+            $"descartadas={_metrics.DroppedPriceChanges} | " +
+            $"tickers inválidos={_metrics.InvalidTickerCount}");
         _callbackBridge.DetachMarketData(_marketEvents);
         _callbackBridge.DetachShutdown(_shutdownRequested);
         return isSuccessful;

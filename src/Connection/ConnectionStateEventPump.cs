@@ -12,6 +12,7 @@ internal sealed class ConnectionStateEventPump
             SingleWriter = false,
             AllowSynchronousContinuations = false
         });
+    private readonly Dictionary<int, int> _lastLoggedResults = [];
     private int _failureDetected;
 
     internal ConnectionStateEventPump(ConnectionStateMachine stateMachine)
@@ -35,13 +36,30 @@ internal sealed class ConnectionStateEventPump
         {
             await foreach (var stateEvent in _events.Reader.ReadAllAsync().ConfigureAwait(false))
             {
+                // Nada é registrado depois do pedido de encerramento: a DLL reemite os estados
+                // da sessão sendo derrubada e traduzi-los como falha de login ou de licença
+                // faria uma execução bem-sucedida parecer um erro de credencial.
+                // IsTransition fica por último para só memorizar o que de fato virou linha.
+                var isReportable =
+                    !shutdownRequested.IsCancellationRequested &&
+                    IsReportable(stateEvent) &&
+                    IsTransition(stateEvent);
+
                 // O tee enfileira arquivo e console antes de Process liberar a espera. Assim, o
                 // estado causador sempre precede a confirmação sem bloquear esta thread em I/O.
-                TryWriteLine(
-                    $"{stateEvent.Timestamp:O} Estado: tipo={(int)stateEvent.StateType}, resultado={stateEvent.Result}");
+                if (isReportable)
+                {
+                    TryWriteLine(Describe(stateEvent));
+                }
+
+                // Process recebe todos os eventos, inclusive os silenciados: a máquina de
+                // estados depende do fluxo íntegro para decidir a prontidão da conexão.
                 _stateMachine.Process(stateEvent.StateType, stateEvent.Result);
 
-                ReportMarketDataHealth(stateEvent);
+                if (isReportable)
+                {
+                    ReportMarketDataHealth(stateEvent);
+                }
             }
         }
         catch (Exception exception)
@@ -84,6 +102,78 @@ internal sealed class ConnectionStateEventPump
                 break;
         }
     }
+
+    // O handshake de roteamento não entra no log: a DLL o reemite por servidor e por corretora,
+    // alternando entre os dois resultados dezenas de vezes, e um roteamento que não sobe já
+    // aparece nos estados pendentes do timeout de conexão. Do Market Data só interessam os
+    // resultados de saúde; os intermediários de "conectando" são ruído do mesmo handshake.
+    private static bool IsReportable(ConnectionStateEvent stateEvent) => stateEvent.StateType switch
+    {
+        ConnectionStateType.Routing => false,
+        ConnectionStateType.MarketData => stateEvent.Result is
+            (int)MarketDataStateResult.Connected or
+            (int)MarketDataStateResult.Degraded or
+            (int)MarketDataStateResult.Critical,
+        _ => true
+    };
+
+    // O último resultado é memorizado por tipo de estado, não globalmente: a DLL intercala os
+    // quatro tipos, então comparar só com a linha anterior deixa passar repetições do mesmo
+    // estado separadas por outro. Guardar por tipo ainda preserva oscilações reais de saúde do
+    // market data (4 -> 5 -> 4 continua rendendo três linhas).
+    // O canal é SingleReader, então o dicionário dispensa sincronização.
+    private bool IsTransition(ConnectionStateEvent stateEvent)
+    {
+        var stateType = (int)stateEvent.StateType;
+        if (_lastLoggedResults.TryGetValue(stateType, out var lastResult) &&
+            lastResult == stateEvent.Result)
+        {
+            return false;
+        }
+
+        _lastLoggedResults[stateType] = stateEvent.Result;
+        return true;
+    }
+
+    private static string Describe(ConnectionStateEvent stateEvent) => stateEvent.StateType switch
+    {
+        ConnectionStateType.Login => $"Login: {DescribeLogin(stateEvent.Result)}",
+        ConnectionStateType.Routing => $"Roteamento: {DescribeRouting(stateEvent.Result)}",
+        ConnectionStateType.MarketData => $"Market Data: {DescribeMarketData(stateEvent.Result)}",
+        ConnectionStateType.Activation => $"Ativação: {DescribeActivation(stateEvent.Result)}",
+        _ => $"Estado não mapeado (tipo={(int)stateEvent.StateType}, resultado={stateEvent.Result})."
+    };
+
+    private static string DescribeLogin(int result) => result switch
+    {
+        (int)LoginStateResult.Connected => "conectado.",
+        (int)LoginStateResult.InvalidLogin => "usuário inválido.",
+        (int)LoginStateResult.InvalidPassword => "senha inválida.",
+        (int)LoginStateResult.BlockedPassword => "senha bloqueada.",
+        (int)LoginStateResult.ExpiredPassword => "senha expirada.",
+        (int)LoginStateResult.UnknownFailure => "falha desconhecida.",
+        _ => $"resultado {result} não mapeado."
+    };
+
+    private static string DescribeRouting(int result) => result switch
+    {
+        (int)RoutingStateResult.ServerConnected => "conectado ao servidor.",
+        (int)RoutingStateResult.BrokerConnected => "conectado à corretora.",
+        _ => $"resultado {result} não mapeado."
+    };
+
+    private static string DescribeMarketData(int result) => result switch
+    {
+        (int)MarketDataStateResult.Connected => "conectado e pronto para receber cotações.",
+        (int)MarketDataStateResult.Degraded => "degradado.",
+        (int)MarketDataStateResult.Critical => "crítico.",
+        _ => $"resultado {result} não mapeado."
+    };
+
+    private static string DescribeActivation(int result) =>
+        result == (int)ActivationStateResult.Valid
+            ? "licença válida."
+            : $"licença inválida (resultado {result}).";
 
     private static void TryWriteLine(string message)
     {

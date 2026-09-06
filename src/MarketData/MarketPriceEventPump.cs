@@ -12,7 +12,7 @@ internal sealed class MarketPriceEventPump
     private int _priceConsumerFailure;
     private int _invalidTickerConsumerFailure;
     private int _fatalInvalidTicker;
-    private int _firstPriceReported;
+    private readonly HashSet<string> _reportedInstruments = new(StringComparer.OrdinalIgnoreCase);
 
     internal MarketPriceEventPump(int channelCapacity, MarketDataMetrics metrics)
     {
@@ -121,13 +121,16 @@ internal sealed class MarketPriceEventPump
 
     private void ReportFirstPriceChange(RawPriceChange priceChange)
     {
-        if (Interlocked.CompareExchange(ref _firstPriceReported, 1, 0) != 0)
+        // Um registro por instrumento: um flag único de processo faria a primeira cotação a
+        // chegar calar todas as outras, dando a impressão de que só um ticker foi entregue.
+        // ObservePricesAsync é o único leitor do canal, então o conjunto dispensa lock.
+        if (!_reportedInstruments.Add(priceChange.Instrument.Key))
         {
             return;
         }
 
         TryWriteLine(
-            $"Gate Sprint 3: primeira TChangeCotation recebida | " +
+            $"Primeira TChangeCotation recebida | " +
             $"instrumento={priceChange.Instrument.Key} | " +
             $"pwcDate={priceChange.NativeDateText} | " +
             $"sequência={priceChange.NativeSequenceNumber} | preço={priceChange.Price}.");

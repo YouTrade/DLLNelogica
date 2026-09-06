@@ -1,11 +1,11 @@
 # DLLNelogica — Projeto Educacional
 
-> Série **Programando o seu robô de trading com a DLL da Nelogica** — **Aula 02 concluída,
-> com retrofit arquitetural pós-aula. A Aula 03 ainda não foi iniciada.**
+> Série **Programando o seu robô de trading com a DLL da Nelogica** — **Aula 03 concluída:
+> consumo de Market Data.**
 
 Exemplo didático em C# que demonstra, do zero, como estabelecer uma conexão com a
-**ProfitDLL da Nelogica**: autenticar, confirmar que todos os serviços subiram e finalizar
-a sessão de forma limpa.
+**ProfitDLL da Nelogica**: autenticar, confirmar que todos os serviços subiram, assinar
+instrumentos, receber cotações e finalizar a sessão de forma limpa.
 
 Este material foi escrito para ensino. O objetivo é que você entenda **cada decisão** —
 por que um callback não pode bloquear, por que um retorno `NL_OK` não significa "conectado",
@@ -20,41 +20,52 @@ por que um estado precisa ser travado e não reavaliado.
 | Aula 01 | 2026-08-24 | Conexão, quatro estados obrigatórios e ciclo de vida da ProfitDLL |
 | Aula 02 | 2026-08-26 | Relatório diário e observabilidade antes do Market Data |
 | Retrofit pós-Aula 02 | 2026-08-28 | Arquitetura, DI manual, resiliência de callbacks e logging assíncrono |
-| Aula 03 | Planejada | Consumo de Market Data — ainda não implementado |
+| Aula 03 | 2026-09-06 | Consumo de Market Data: assinatura de instrumentos e cotações |
 
 O histórico curado, incluindo o estado original da Aula 01 e as decisões do retrofit, está
 em [CHANGELOG.md](CHANGELOG.md). O README descreve sempre o comportamento atual do projeto.
 
 ---
 
-## Aula 02 — antes do Market Data, é preciso provar o que o sistema está fazendo
+## Aula 03 — o mercado passando por dentro
 
-Na **Aula 03** entra o **Market Data**. Mas receber dados de mercado sem conseguir registrar
-de forma determinística *o que* chegou, *quando* chegou e em *qual estado* a aplicação estava
-seria construir a etapa seguinte sem base para observação e diagnóstico.
+A Aula 02 foi preparatória. Receber dados de mercado sem conseguir registrar de forma
+determinística *o que* chegou, *quando* chegou e em *qual estado* a aplicação estava seria
+construir a etapa seguinte sem base para observação e diagnóstico. Primeiro uma base
+confiável — depois o mercado passando por dentro dela.
 
-Por isso a Aula 02 é preparatória: aqui a aplicação ganhou um **relatório diário** e uma
-instrumentação mais completa do próprio ciclo de vida da conexão. A partir de agora ficam
-registrados:
+Com a base pronta, a Aula 03 liga o **Market Data**. A aplicação lê uma lista de instrumentos
+da configuração, assina cada um deles, recebe as cotações e desassina em ordem reversa no
+encerramento.
 
-- a inicialização do arquivo diário;
-- o retorno de `DLLInitializeLogin`;
-- a evolução dos estados de conexão, um a um;
-- a confirmação dos quatro estados obrigatórios;
-- a solicitação de encerramento pelo usuário;
-- a finalização dos serviços e o retorno de `DLLFinalize`.
-
-Trecho de uma execução real:
+Trecho de uma execução real, com quatro instrumentos:
 
 ```
-2026-08-26 13:56:21 [DLLNelogica] DLLInitializeLogin retornou NL_OK; aguardando os estados de conexão.
-2026-08-26 13:56:23 [DLLNelogica] Conexão confirmada pelos quatro estados obrigatórios.
-2026-08-26 13:57:51 [DLLNelogica] Encerramento solicitado pelo usuário.
-2026-08-26 13:57:52 [DLLNelogica] DLLFinalize retornou 0 (0x00000000).
+2026-09-06 10:30:15 [DLLNelogica] Login: conectado.
+2026-09-06 10:30:16 [DLLNelogica] Market Data: conectado e pronto para receber cotações.
+2026-09-06 10:30:17 [DLLNelogica] Conexão confirmada pelos quatro estados obrigatórios.
+2026-09-06 10:30:17 [DLLNelogica] SubscribeTicker(WINV26:F) retornou NL_OK — 0 (0x00000000).
+2026-09-06 10:30:17 [DLLNelogica] SubscribeTicker(PETR4:B) retornou NL_OK — 0 (0x00000000).
+2026-09-06 10:30:17 [DLLNelogica] Primeira TChangeCotation recebida | instrumento=WINV26:F | pwcDate=04/09/2026 18:31:28.827 | sequência=52875360 | preço=187600.
+2026-09-06 10:30:17 [DLLNelogica] Primeira TChangeCotation recebida | instrumento=PETR4:B | pwcDate=04/09/2026 18:39:38.653 | sequência=462610 | preço=46,97.
+2026-09-06 10:31:00 [DLLNelogica] Resumo de market data | cotações recebidas=4 | descartadas=0 | tickers inválidos=0
 ```
 
-Pode parecer detalhe. Não é. Primeiro uma base confiável — depois o mercado passando por
-dentro dela.
+Três decisões desta aula valem mais que o código que as implementa:
+
+**A assinatura é tudo ou nada.** Se um instrumento for recusado, os que já foram aceitos são
+desassinados e a aplicação encerra. Uma sessão parcial — em que você acredita estar observando
+quatro ativos mas recebe três — é pior que uma falha explícita.
+
+**A thread de callback nunca espera.** As cotações entram em um canal limitado e são consumidas
+fora da thread nativa. Quando o canal enche, a cotação é descartada e contabilizada: travar a
+thread da DLL para não perder um tick colocaria a sessão inteira em risco.
+
+**Ticker inválido em uma assinatura aceita é falha terminal.** Se a DLL avisa que um ticker
+que você assinou não existe, continuar rodando seria fingir que a configuração está correta.
+
+> A validação desta aula foi feita com o mercado fechado: cada instrumento entregou a última
+> cotação do pregão anterior. O fluxo contínuo em pregão ainda não foi exercitado.
 
 ---
 
@@ -67,7 +78,8 @@ O que ele **não** tem:
 
 - Nenhuma proteção de credenciais — elas ficam em texto puro no `appsettings.json`
 - Nenhuma reconexão automática, retentativa ou recuperação de falha
-- Nenhum tratamento de ordens, posições, contas ou dados de mercado
+- Nenhum tratamento de ordens, posições ou contas
+- Nenhuma persistência das cotações recebidas — elas são contabilizadas e descartadas
 - Nenhuma auditoria, persistência de dados ou monitoramento
 - Nenhuma suíte automatizada de testes — a validação disponível é compilação estrita e execução manual
 - Nenhuma retenção ou expurgo do relatório — os arquivos diários se acumulam indefinidamente
@@ -80,14 +92,18 @@ com a ProfitDLL funciona e depois construa o seu, com os cuidados que a sua oper
 ## O que o projeto faz
 
 1. Abre o relatório diário em `log/AAAAMMDD.log`, ao lado do executável
-2. Lê as credenciais de `src/appsettings.json`
+2. Lê as credenciais e a lista de instrumentos de `src/appsettings.json`
 3. Carrega a `ProfitDLL.dll` (Win64) explicitamente do diretório da aplicação
 4. Chama `DLLInitializeLogin` uma única vez
-5. Publica os estados recebidos em uma fila e os processa fora da thread nativa
-6. Registra cada estado antes de aplicar a transição que ele causa
-7. Anuncia a conexão apenas quando os quatro estiverem satisfeitos
-8. Mantém o processo vivo até `Ctrl+C`
-9. Chama `DLLFinalize` e drena os eventos pendentes antes de sair
+5. Registra os callbacks de cotação e de ticker inválido
+6. Publica os estados recebidos em uma fila e os processa fora da thread nativa
+7. Registra cada estado antes de aplicar a transição que ele causa
+8. Anuncia a conexão apenas quando os quatro estiverem satisfeitos
+9. Assina todos os instrumentos configurados, ou desfaz o que já assinou e encerra
+10. Consome as cotações em segundo plano, contabilizando recebidas e descartadas
+11. Mantém o processo vivo até `Ctrl+C`
+12. Desassina os instrumentos em ordem reversa
+13. Chama `DLLFinalize` e drena os eventos pendentes antes de sair
 
 Cada um desses passos deixa rastro no relatório.
 
@@ -109,6 +125,17 @@ Três detalhes que só se descobrem observando a DLL em execução, e que este p
   por isso cada estado é *travado* na primeira vez que fica válido, e não reavaliado a cada evento.
 - **Market Data 5 e 6 continuam sendo "conectado".** São avisos de degradação e de fila local
   parada, não desconexão.
+
+O handshake de roteamento é reemitido uma vez por servidor e por corretora: em uma conexão
+comum ele produz dezenas de eventos alternando entre os resultados 2 e 5. A máquina de estados
+recebe todos eles, mas o relatório registra apenas as transições que mudam de resultado, e o
+roteamento fica de fora — um roteamento que não sobe já aparece na lista de estados pendentes
+da mensagem de timeout.
+
+Durante o `DLLFinalize` a DLL reemite os mesmos códigos para anunciar a sessão sendo derrubada.
+Ali eles **não** significam o que significam na subida: o resultado 1 de login, que na conexão
+seria "usuário inválido", é apenas a sessão terminando. Por isso o relatório para de registrar
+estados assim que o encerramento é solicitado.
 
 ---
 
@@ -168,7 +195,7 @@ um gravador dedicado persiste a fila em segundo plano com carimbo de data e hora
 
 ## Como executar
 
-**1. Preencha as credenciais** em `src/appsettings.json`:
+**1. Preencha as credenciais e escolha os instrumentos** em `src/appsettings.json`:
 
 ```json
 {
@@ -176,9 +203,26 @@ um gravador dedicado persiste a fila em segundo plano com carimbo de data e hora
     "Key": "sua-chave-de-ativacao",
     "User": "seu-usuario",
     "Password": "sua-senha"
+  },
+  "MarketData": {
+    "ChannelCapacity": 4096,
+    "HistoryCapacityPerInstrument": 1000,
+    "ReportIntervalSeconds": 1,
+    "Instruments": [
+      { "Ticker": "WINV26", "Exchange": "F" },
+      { "Ticker": "PETR4", "Exchange": "B" }
+    ]
   }
 }
 ```
+
+`Exchange` é a bolsa do instrumento: `F` para os futuros da BM&F, `B` para as ações da Bovespa.
+`ChannelCapacity` é o tamanho da fila de cotações — quando ela enche, o excedente é descartado
+e contabilizado, para que a thread da DLL nunca fique esperando.
+
+> Os tickers de futuros carregam o vencimento no nome (`WINV26`, `WDOV26`) e portanto vencem.
+> Se o contrato configurado não existir mais, a assinatura é recusada e a aplicação encerra
+> por inteiro — troque o vencimento antes de rodar.
 
 **2. Nada a baixar:** a `src/ProfitDLL.dll` (Win64) já acompanha o repositório.
 
@@ -243,21 +287,24 @@ DLLNelogica.sln
 │   ├── Configuration/              leitura e validação do JSON
 │   ├── Connection/                 estados, fila e máquina de conexão
 │   ├── Interop/                    P/Invoke, sessão, callbacks e guardas de processo
-│   └── Logging/                    fila assíncrona, tee e arquivo diário
+│   ├── Logging/                    fila assíncrona, tee e arquivo diário
+│   └── MarketData/                 assinaturas, canais de cotação e métricas
 └── tools/                         utilitários de inspeção do código
 ```
 
 Em tempo de execução, ao lado do executável, aparecem ainda a pasta `log/` (o relatório da
 aplicação) e os artefatos da própria ProfitDLL — nenhum deles versionado.
 
-A camada `Interop/` importa **apenas** o necessário para o ciclo de vida da conexão:
-`DLLInitializeLogin`, `DLLFinalize`, os 11 delegates exigidos pela assinatura, o struct
-`TAssetID` e o enum `NResult`. As cinco instâncias de delegate usadas pela aplicação ficam
-enraizadas em `ProfitCallbackRoots` até o processo terminar. Nada de ordens ou posições.
+A camada `Interop/` importa **apenas** o necessário para o ciclo de vida da conexão e para o
+Market Data: `DLLInitializeLogin`, `DLLFinalize`, `SetChangeCotationCallback`,
+`SetInvalidTickerCallback`, `SubscribeTicker`, `UnsubscribeTicker`, os 13 delegates exigidos
+pelas assinaturas, o struct `TAssetID` e o enum `NResult`. As sete instâncias de delegate
+usadas pela aplicação ficam enraizadas em `ProfitCallbackRoots` até o processo terminar. Nada
+de ordens ou posições.
 
-Os callbacks de market data ainda não processam conteúdo. Os canais e as políticas de overflow
-serão introduzidos somente na Aula 03, junto dos consumidores reais de cada evento. Continua
-proibido fazer I/O, bloquear ou executar regra de negócio diretamente na thread de callback.
+Continua proibido fazer I/O, bloquear ou executar regra de negócio diretamente na thread de
+callback. Os callbacks de cotação e de ticker inválido apenas publicam em canais e retornam;
+todo o consumo acontece em `MarketData/`, fora da thread nativa.
 
 ---
 

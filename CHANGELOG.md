@@ -7,6 +7,72 @@ alterações técnicas em detalhe.
 Os marcos seguem a sequência das aulas, não versionamento semântico. Trabalhos estruturais
 entre aulas recebem um nome próprio e não avançam artificialmente a numeração da série.
 
+## [Aula 03] - 2026-09-06
+
+Primeiro consumo real de Market Data: assinatura de instrumentos, recebimento de cotações e
+desassinatura ordenada no encerramento.
+
+### Adicionado
+
+- Assinatura e desassinatura de instrumentos por `SubscribeTicker` e `UnsubscribeTicker`.
+- Callbacks `TChangeCotation` e `TInvalidTickerCallback`, registrados por
+  `SetChangeCotationCallback` e `SetInvalidTickerCallback`.
+- Seção `MarketData` no `appsettings.json`: capacidade do canal, capacidade de histórico por
+  instrumento, intervalo de relatório e a lista de instrumentos.
+- `MarketDataSubscriptionManager`, com assinatura tudo ou nada, rollback na primeira recusa e
+  desassinatura em ordem reversa.
+- `MarketPriceEventPump`, com canal limitado para cotações e canal de controle separado para
+  tickers inválidos.
+- `MarketDataMetrics`, contabilizando cotações recebidas, cotações descartadas e tickers
+  inválidos.
+- `MarketDataRuntimePipeline` e `MarketDataPipelineFactory`, que iniciam e drenam os três
+  consumidores do ciclo de Market Data.
+- `NativeCallResult`, uniformizando no relatório o resultado de cada chamada nativa.
+- Registro da primeira cotação de cada instrumento, com data nativa, sequência e preço.
+
+### Alterado
+
+- `JsonCredentialsLoader` deu lugar a `JsonConfigurationLoader`, que valida a forma do JSON
+  antes da desserialização e passou a cobrir também a seção `MarketData`.
+- `ApplicationRunner` ficou restrito à leitura e validação da configuração; o ciclo de Market
+  Data passou para `MarketDataApplication` e `MarketDataSessionCoordinator`.
+- Um ticker inválido correlacionado a uma assinatura aceita passou a ser falha terminal, com
+  encerramento solicitado.
+- Os estados de conexão passaram a ser relatados por mensagens descritivas, no lugar dos pares
+  numéricos `tipo` e `resultado`.
+
+### Corrigido
+
+- A primeira cotação passou a ser registrada por instrumento. Um único indicador por processo
+  fazia a primeira cotação a chegar silenciar todos os demais instrumentos, dando a impressão
+  de que apenas um ticker havia sido entregue.
+
+### Removido
+
+- Repetições de estado no relatório: o handshake de roteamento e os estados intermediários de
+  Market Data deixaram de ser registrados, e cada estado só reaparece quando o resultado muda.
+- Registro de estados depois do pedido de encerramento. Durante o `DLLFinalize` a DLL reemite
+  códigos que, traduzidos pela tabela de login e de ativação, sugeririam credencial inválida
+  em uma execução correta.
+
+### Descobertas registradas
+
+- O handshake de roteamento é reemitido uma vez por servidor e por corretora, alternando entre
+  os resultados 2 e 5 dezenas de vezes antes de estabilizar.
+- Os códigos de estado não têm o mesmo significado durante o encerramento: os mesmos valores
+  que indicam falha de login na subida apenas sinalizam a sessão sendo derrubada.
+- Futuros e ações chegam com escalas de preço diferentes no mesmo callback.
+
+### Verificado
+
+- Build estrito com zero avisos e zero erros.
+- Conexão real ponta a ponta com quatro instrumentos — `WINV26`, `WDOV26`, `PETR4` e `VALE3` —,
+  todos aceitos por `SubscribeTicker`, com cotação recebida de cada um, desassinatura em ordem
+  reversa, `DLLFinalize` retornando zero e processo encerrando com código zero.
+- A validação ocorreu com o mercado fechado: cada instrumento entregou a última cotação do
+  pregão anterior. O fluxo contínuo em pregão ainda não foi exercitado.
+- Credenciais, logs e artefatos dessa validação foram descartados após a execução.
+
 ## [Retrofit pós-Aula 02] - 2026-08-28
 
 Este marco reorganiza e endurece a base construída nas duas primeiras aulas. Ele **não é a
@@ -105,6 +171,7 @@ Aula 03** e não implementa consumo de Market Data.
 - Uma nova inicialização após `DLLFinalize` no mesmo processo não completa todos os estados;
   a reconexão exige outro processo.
 
+[Aula 03]: https://github.com/YouTrade/DLLNelogica/compare/aula-02-retrofit...aula-03
 [Retrofit pós-Aula 02]: https://github.com/YouTrade/DLLNelogica/compare/aula-02...aula-02-retrofit
 [Aula 02]: https://github.com/YouTrade/DLLNelogica/compare/aula-01...aula-02
 [Aula 01]: https://github.com/YouTrade/DLLNelogica/releases/tag/aula-01
