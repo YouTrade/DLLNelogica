@@ -50,3 +50,17 @@ internal struct TAssetID
 
     public int Feed;
 }
+
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+internal struct TConnectorAssetIdentifier
+{
+    public byte Version;
+
+    [MarshalAs(UnmanagedType.LPWStr)]
+    public string Ticker;
+
+    [MarshalAs(UnmanagedType.LPWStr)]
+    public string Exchange;
+
+    public byte FeedType;
+}

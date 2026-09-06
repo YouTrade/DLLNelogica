@@ -5,4 +5,6 @@ internal readonly record struct ProfitCallbackSet(
     TAccountCallback Account,
     TNewDailyCallback NewDaily,
     TProgressCallBack Progress,
-    TNewTinyBookCallBack TinyBook);
+    TNewTinyBookCallBack TinyBook,
+    TChangeCotation ChangeCotation,
+    TInvalidTickerCallback InvalidTicker);

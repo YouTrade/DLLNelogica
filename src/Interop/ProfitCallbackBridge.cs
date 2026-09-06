@@ -1,10 +1,12 @@
 using DLLNelogica.Connection;
+using DLLNelogica.MarketData;
 
 namespace DLLNelogica.Interop;
 
 internal sealed class ProfitCallbackBridge
 {
     private readonly ConnectionStateEventPump _stateEvents;
+    private MarketPriceEventPump? _marketPriceEvents;
     private CancellationTokenSource? _shutdownRequested;
 
     internal ProfitCallbackBridge(ConnectionStateEventPump stateEvents)
@@ -17,6 +19,12 @@ internal sealed class ProfitCallbackBridge
 
     internal void DetachShutdown(CancellationTokenSource shutdownRequested) =>
         Interlocked.CompareExchange(ref _shutdownRequested, null, shutdownRequested);
+
+    internal void AttachMarketData(MarketPriceEventPump marketPriceEvents) =>
+        Volatile.Write(ref _marketPriceEvents, marketPriceEvents);
+
+    internal void DetachMarketData(MarketPriceEventPump marketPriceEvents) =>
+        Interlocked.CompareExchange(ref _marketPriceEvents, null, marketPriceEvents);
 
     internal void HandleState(int stateType, int result)
     {
@@ -66,6 +74,29 @@ internal sealed class ProfitCallbackBridge
         // Aula futura: publicar em canal limitado; callback nativo nunca executa I/O.
     }
 #pragma warning restore CA1822
+
+    internal void HandleChangeCotation(
+        TAssetID assetId,
+        string? date,
+        uint tradeNumber,
+        double price)
+    {
+        var events = Volatile.Read(ref _marketPriceEvents)
+            ?? throw new InvalidOperationException("O pipeline de Market Data não está conectado.");
+        var instrument = new MarketInstrument(assetId.Ticker, assetId.Exchange, assetId.Feed);
+        events.PublishPrice(instrument, date ?? string.Empty, tradeNumber, price);
+    }
+
+    internal void HandleInvalidTicker(TConnectorAssetIdentifier assetId)
+    {
+        var events = Volatile.Read(ref _marketPriceEvents)
+            ?? throw new InvalidOperationException("O pipeline de Market Data não está conectado.");
+        var instrument = new MarketInstrument(assetId.Ticker, assetId.Exchange, assetId.FeedType);
+        if (!events.TryPublishInvalidTicker(instrument))
+        {
+            SignalFailureNoThrow();
+        }
+    }
 
     internal void SignalFailureNoThrow()
     {

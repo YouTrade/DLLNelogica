@@ -2,6 +2,7 @@ using DLLNelogica.Application;
 using DLLNelogica.Configuration;
 using DLLNelogica.Connection;
 using DLLNelogica.Interop;
+using DLLNelogica.MarketData;
 
 namespace DLLNelogica;
 
@@ -15,13 +16,20 @@ internal static class Program
         var callbackBridge = new ProfitCallbackBridge(stateEvents);
         IProfitApi profitApi = new ProfitNativeApi(AppContext.BaseDirectory);
         var profitSession = new ProfitSession(profitApi, callbackBridge);
-        var credentialsLoader = new JsonCredentialsLoader(AppContext.BaseDirectory);
-        var application = new ApplicationRunner(
-            credentialsLoader,
-            profitSession,
+        var configurationLoader = new JsonConfigurationLoader(AppContext.BaseDirectory);
+        var metrics = new MarketDataMetrics();
+        var subscriptions = new MarketDataSubscriptionManager(profitSession);
+        var pipelineFactory = new MarketDataPipelineFactory(
             callbackBridge,
+            stateEvents,
+            subscriptions,
+            metrics);
+        var sessionCoordinator = new MarketDataSessionCoordinator(
+            profitSession,
             connectionState,
-            stateEvents);
+            subscriptions);
+        var marketDataApplication = new MarketDataApplication(sessionCoordinator, pipelineFactory);
+        var application = new ApplicationRunner(configurationLoader, marketDataApplication);
 
         return await application.RunAsync().ConfigureAwait(false);
     }

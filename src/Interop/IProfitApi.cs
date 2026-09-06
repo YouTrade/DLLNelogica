@@ -12,5 +12,13 @@ internal interface IProfitApi
         string password,
         ProfitCallbackSet callbacks);
 
+    int SetChangeCotationCallback(TChangeCotation callback);
+
+    int SetInvalidTickerCallback(TInvalidTickerCallback callback);
+
+    int SubscribeTicker(string ticker, string exchange);
+
+    int UnsubscribeTicker(string ticker, string exchange);
+
     int FinalizeServices();
 }

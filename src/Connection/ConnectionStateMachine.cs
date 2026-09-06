@@ -86,6 +86,11 @@ internal sealed class ConnectionStateMachine
         }
     }
 
+    internal Task<ConnectionWaitResult> WaitForConnectionAsync(
+        int timeoutSeconds,
+        CancellationToken cancellationToken = default) =>
+        WaitForConnectionAsync(TimeSpan.FromSeconds(timeoutSeconds), cancellationToken);
+
     private void ProcessLogin(int result)
     {
         if (result == (int)LoginStateResult.Connected)

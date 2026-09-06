@@ -25,4 +25,20 @@ internal static class ProfitFunctions
 
     [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
     internal static extern int DLLFinalize();
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int SetChangeCotationCallback(TChangeCotation callback);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int SetInvalidTickerCallback(TInvalidTickerCallback callback);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int SubscribeTicker(
+        [MarshalAs(UnmanagedType.LPWStr)] string ticker,
+        [MarshalAs(UnmanagedType.LPWStr)] string exchange);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int UnsubscribeTicker(
+        [MarshalAs(UnmanagedType.LPWStr)] string ticker,
+        [MarshalAs(UnmanagedType.LPWStr)] string exchange);
 }

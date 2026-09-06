@@ -38,6 +38,18 @@ internal sealed class ProfitNativeApi : IProfitApi
 
     public int FinalizeServices() => ProfitFunctions.DLLFinalize();
 
+    public int SetChangeCotationCallback(TChangeCotation callback) =>
+        ProfitFunctions.SetChangeCotationCallback(callback);
+
+    public int SetInvalidTickerCallback(TInvalidTickerCallback callback) =>
+        ProfitFunctions.SetInvalidTickerCallback(callback);
+
+    public int SubscribeTicker(string ticker, string exchange) =>
+        ProfitFunctions.SubscribeTicker(ticker, exchange);
+
+    public int UnsubscribeTicker(string ticker, string exchange) =>
+        ProfitFunctions.UnsubscribeTicker(ticker, exchange);
+
     private nint ResolveProfitDll(
         string libraryName,
         Assembly assembly,

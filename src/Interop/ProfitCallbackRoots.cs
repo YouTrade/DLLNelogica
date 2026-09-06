@@ -28,6 +28,16 @@ internal static class ProfitCallbackRoots
     /// </summary>
     private static readonly TNewTinyBookCallBack TinyBookCallback = HandleTinyBook;
 
+    /// <summary>
+    /// Raiz estática do callback de alteração de cotação registrado após a inicialização.
+    /// </summary>
+    private static readonly TChangeCotation ChangeCotationCallback = HandleChangeCotation;
+
+    /// <summary>
+    /// Raiz estática do callback operacional de ticker inválido.
+    /// </summary>
+    private static readonly TInvalidTickerCallback InvalidTickerCallback = HandleInvalidTicker;
+
     private static ProfitCallbackBridge? _activeBridge;
 
     internal static ProfitCallbackSet Callbacks { get; } = new(
@@ -35,7 +45,9 @@ internal static class ProfitCallbackRoots
         AccountCallback,
         NewDailyCallback,
         ProgressCallback,
-        TinyBookCallback);
+        TinyBookCallback,
+        ChangeCotationCallback,
+        InvalidTickerCallback);
 
     internal static void Attach(ProfitCallbackBridge bridge)
     {
@@ -152,6 +164,38 @@ internal static class ProfitCallbackRoots
         try
         {
             bridge?.HandleTinyBook(assetId, price, quantity, side);
+        }
+        catch
+        {
+            ProfitProcessLifetime.SignalCallbackFailure();
+            bridge?.SignalFailureNoThrow();
+        }
+    }
+
+    private static void HandleChangeCotation(
+        TAssetID assetId,
+        string? date,
+        uint tradeNumber,
+        double price)
+    {
+        var bridge = Volatile.Read(ref _activeBridge);
+        try
+        {
+            bridge?.HandleChangeCotation(assetId, date, tradeNumber, price);
+        }
+        catch
+        {
+            ProfitProcessLifetime.SignalCallbackFailure();
+            bridge?.SignalFailureNoThrow();
+        }
+    }
+
+    private static void HandleInvalidTicker(TConnectorAssetIdentifier assetId)
+    {
+        var bridge = Volatile.Read(ref _activeBridge);
+        try
+        {
+            bridge?.HandleInvalidTicker(assetId);
         }
         catch
         {

@@ -105,6 +105,27 @@ internal sealed class ProfitSession
         }
     }
 
+    internal MarketDataCallbackRegistrationResult RegisterMarketDataCallbacks()
+    {
+        var changeCotation = ExecuteNativeCall(
+            "SetChangeCotationCallback",
+            () => _profitApi.SetChangeCotationCallback(ProfitCallbackRoots.Callbacks.ChangeCotation));
+        var invalidTicker = ExecuteNativeCall(
+            "SetInvalidTickerCallback",
+            () => _profitApi.SetInvalidTickerCallback(ProfitCallbackRoots.Callbacks.InvalidTicker));
+        return new MarketDataCallbackRegistrationResult(changeCotation, invalidTicker);
+    }
+
+    internal NativeCallResult Subscribe(string ticker, string exchange) =>
+        ExecuteNativeCall(
+            $"SubscribeTicker({ticker}:{exchange})",
+            () => _profitApi.SubscribeTicker(ticker, exchange));
+
+    internal NativeCallResult Unsubscribe(string ticker, string exchange) =>
+        ExecuteNativeCall(
+            $"UnsubscribeTicker({ticker}:{exchange})",
+            () => _profitApi.UnsubscribeTicker(ticker, exchange));
+
     private static string FormatNativeResult(int result)
     {
         var numericResult = $"{result} (0x{unchecked((uint)result):X8})";
@@ -112,4 +133,18 @@ internal sealed class ProfitSession
             ? $"{(NResult)result} — {numericResult}"
             : $"NResult desconhecido — {numericResult}";
     }
+
+#pragma warning disable CA1031 // Toda falha nativa precisa virar resultado para permitir DLLFinalize.
+    private static NativeCallResult ExecuteNativeCall(string operation, Func<int> call)
+    {
+        try
+        {
+            return NativeCallResult.Completed(operation, call());
+        }
+        catch (Exception exception)
+        {
+            return NativeCallResult.Failed(operation, exception);
+        }
+    }
+#pragma warning restore CA1031
 }

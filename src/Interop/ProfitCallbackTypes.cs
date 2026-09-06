@@ -4,6 +4,14 @@ namespace DLLNelogica.Interop;
 
 internal delegate void TStateCallback(int stateType, int result);
 
+internal delegate void TChangeCotation(
+    TAssetID assetId,
+    [MarshalAs(UnmanagedType.LPWStr)] string? date,
+    uint tradeNumber,
+    double price);
+
+internal delegate void TInvalidTickerCallback(TConnectorAssetIdentifier assetId);
+
 internal delegate void THistoryCallBack(
     TAssetID assetId,
     int brokerId,
