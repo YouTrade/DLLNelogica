@@ -279,17 +279,16 @@ DLLNelogica.sln
 ├── Directory.Build.props          perfil estrito compartilhado pela solução
 ├── CodeMetricsConfig.txt          limites de complexidade e acoplamento
 ├── THIRD-PARTY-NOTICES.md         titularidade e redistribuição da ProfitDLL
-├── src/
-│   ├── Program.cs                  composition root
-│   ├── appsettings.json            credenciais (preencha)
-│   ├── ProfitDLL.dll               biblioteca nativa da Nelogica
-│   ├── Application/                execução, console e encerramento
-│   ├── Configuration/              leitura e validação do JSON
-│   ├── Connection/                 estados, fila e máquina de conexão
-│   ├── Interop/                    P/Invoke, sessão, callbacks e guardas de processo
-│   ├── Logging/                    fila assíncrona, tee e arquivo diário
-│   └── MarketData/                 assinaturas, canais de cotação e métricas
-└── tools/                         utilitários de inspeção do código
+└── src/
+    ├── Program.cs                  composition root
+    ├── appsettings.json            credenciais (preencha)
+    ├── ProfitDLL.dll               biblioteca nativa da Nelogica
+    ├── Application/                execução, console e encerramento
+    ├── Configuration/              leitura e validação do JSON
+    ├── Connection/                 estados, fila e máquina de conexão
+    ├── Interop/                    P/Invoke, sessão, callbacks e guardas de processo
+    ├── Logging/                    fila assíncrona, tee e arquivo diário
+    └── MarketData/                 assinaturas, canais de cotação e métricas
 ```
 
 Em tempo de execução, ao lado do executável, aparecem ainda a pasta `log/` (o relatório da
