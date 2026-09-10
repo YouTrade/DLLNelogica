@@ -58,7 +58,6 @@ internal sealed class JsonConfigurationLoader
 
         var marketData = GetRequiredObject(root, "MarketData");
         EnsureRequiredIntegerProperty(marketData, "MarketData", "ChannelCapacity");
-        EnsureRequiredIntegerProperty(marketData, "MarketData", "HistoryCapacityPerInstrument");
         EnsureRequiredIntegerProperty(marketData, "MarketData", "ReportIntervalSeconds");
         ValidateInstruments(marketData);
     }

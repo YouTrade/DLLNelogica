@@ -13,18 +13,19 @@ internal sealed class DailyLogSink : IDisposable
             SingleWriter = false,
             AllowSynchronousContinuations = false
         });
-    private readonly DailyFileWriter _fileWriter;
+    private readonly ReportFileWriter _fileWriter;
     private readonly Task _writerTask;
     private int _disposed;
 
     internal DailyLogSink(string binaryDirectory, string sourceName, TextWriter fallbackError)
     {
-        _fileWriter = new DailyFileWriter(binaryDirectory, sourceName, fallbackError);
+        _fileWriter = new ReportFileWriter(binaryDirectory, sourceName, fallbackError);
         _writerTask = Task.Run(ProcessCommandsAsync);
     }
 
-    internal string CurrentFilePath => _fileWriter.CurrentFilePath;
+    internal string CurrentDirectory => _fileWriter.CurrentDirectory;
 
+    // Caminho do tee: tudo que passa por Console.Out e Console.Error vira relato da sessão.
     internal void Write(TextWriter consoleWriter, string? value)
     {
         if (string.IsNullOrEmpty(value) || Volatile.Read(ref _disposed) != 0)
@@ -32,7 +33,33 @@ internal sealed class DailyLogSink : IDisposable
             return;
         }
 
-        _commands.Writer.TryWrite(LogCommand.Write(DateTime.Now, consoleWriter, value));
+        _commands.Writer.TryWrite(LogCommand.Write(
+            DateTime.Now,
+            ReportFiles.Session,
+            LogLinePrefix.SessionStamp,
+            consoleWriter,
+            value));
+    }
+
+    // Caminho dos destinos nomeados. Console nulo significa arquivo apenas — é o que
+    // permite despejar ticks em disco sem inundar a tela.
+    internal void WriteLine(
+        string fileName,
+        LogLinePrefix prefix,
+        TextWriter? consoleWriter,
+        string message)
+    {
+        if (string.IsNullOrEmpty(message) || Volatile.Read(ref _disposed) != 0)
+        {
+            return;
+        }
+
+        _commands.Writer.TryWrite(LogCommand.Write(
+            DateTime.Now,
+            fileName,
+            prefix,
+            consoleWriter,
+            string.Concat(message, Environment.NewLine)));
     }
 
     internal void Flush(TextWriter consoleWriter)
@@ -126,7 +153,7 @@ internal sealed class DailyLogSink : IDisposable
         {
             if (command.FlushCompletion is null)
             {
-                _fileWriter.Write(command.Timestamp, command.Value!);
+                _fileWriter.Write(command.Timestamp, command.FileName, command.Prefix, command.Value!);
                 WriteToConsole(command.ConsoleWriter, command.Value!);
                 continue;
             }
@@ -156,8 +183,13 @@ internal sealed class DailyLogSink : IDisposable
         _ = completion.Wait(SynchronousWaitTimeout);
     }
 
-    private static void WriteToConsole(TextWriter consoleWriter, string value)
+    private static void WriteToConsole(TextWriter? consoleWriter, string value)
     {
+        if (consoleWriter is null)
+        {
+            return;
+        }
+
         try
         {
             consoleWriter.Write(value);
@@ -168,11 +200,11 @@ internal sealed class DailyLogSink : IDisposable
         }
     }
 
-    private static void FlushConsole(TextWriter consoleWriter)
+    private static void FlushConsole(TextWriter? consoleWriter)
     {
         try
         {
-            consoleWriter.Flush();
+            consoleWriter?.Flush();
         }
         catch
         {

@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using DLLNelogica.Logging;
 
 namespace DLLNelogica.MarketData;
 
@@ -8,15 +9,23 @@ internal sealed class MarketPriceEventPump
     private readonly Channel<RawPriceChange> _priceChanges;
     private readonly Channel<InvalidTickerEvent> _invalidTickers;
     private readonly MarketDataMetrics _metrics;
+    private readonly MarketDataSnapshot _snapshot;
+    private readonly IReportLog _reportLog;
     private long _arrivalSequence;
     private int _priceConsumerFailure;
     private int _invalidTickerConsumerFailure;
     private int _fatalInvalidTicker;
     private readonly HashSet<string> _reportedInstruments = new(StringComparer.OrdinalIgnoreCase);
 
-    internal MarketPriceEventPump(int channelCapacity, MarketDataMetrics metrics)
+    internal MarketPriceEventPump(
+        int channelCapacity,
+        MarketDataMetrics metrics,
+        MarketDataSnapshot snapshot,
+        IReportLog reportLog)
     {
         _metrics = metrics;
+        _snapshot = snapshot;
+        _reportLog = reportLog;
         _priceChanges = Channel.CreateBounded<RawPriceChange>(new BoundedChannelOptions(channelCapacity)
         {
             SingleReader = true,
@@ -78,6 +87,8 @@ internal sealed class MarketPriceEventPump
             await foreach (var priceChange in _priceChanges.Reader.ReadAllAsync().ConfigureAwait(false))
             {
                 ReportFirstPriceChange(priceChange);
+                ReportTick(priceChange);
+                _snapshot.Record(priceChange);
             }
         }
         catch (Exception exception)
@@ -135,6 +146,17 @@ internal sealed class MarketPriceEventPump
             $"pwcDate={priceChange.NativeDateText} | " +
             $"sequência={priceChange.NativeSequenceNumber} | preço={priceChange.Price}.");
     }
+
+    // Uma linha por cotação, no arquivo do próprio instrumento. Não vai ao console: a dezenas
+    // de ticks por segundo a tela deixaria de ser legível, e é o _Resumo.txt que dá a visão ao
+    // vivo. A escrita só enfileira no canal do log — o disco fica com a thread gravadora, e é
+    // isso que impede o registro de empurrar pressão de volta na fila de cotações.
+    private void ReportTick(RawPriceChange priceChange) =>
+        _reportLog.WriteToFile(
+            priceChange.Instrument.ReportFileName,
+            $"pwcDate={priceChange.NativeDateText} | " +
+            $"sequência={priceChange.NativeSequenceNumber} | " +
+            $"chegada={priceChange.ArrivalSequence} | preço={priceChange.Price}");
 
     private static void TryWriteLine(string message)
     {

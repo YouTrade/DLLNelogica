@@ -23,7 +23,8 @@ internal static class Program
             callbackBridge,
             stateEvents,
             subscriptions,
-            metrics);
+            metrics,
+            environment.Reports);
         var sessionCoordinator = new MarketDataSessionCoordinator(
             profitSession,
             connectionState,

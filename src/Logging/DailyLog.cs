@@ -19,9 +19,15 @@ internal sealed class DailyLog : IDisposable
 
         Console.SetOut(_redirectedOutput);
         Console.SetError(_redirectedError);
+
+        // A porta recebe a saída original, não o tee: destinos nomeados não voltam para o
+        // relato da sessão.
+        Reports = new ReportLog(_sink, _originalOutput);
     }
 
-    internal string CurrentFilePath => _sink.CurrentFilePath;
+    internal string CurrentDirectory => _sink.CurrentDirectory;
+
+    internal IReportLog Reports { get; }
 
     internal static DailyLog Start(string binaryDirectory, string sourceName) =>
         new(binaryDirectory, sourceName);

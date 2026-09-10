@@ -24,6 +24,10 @@ internal sealed class ConsoleApplicationEnvironment : IDisposable
         return new ConsoleApplicationEnvironment(dailyLog);
     }
 
+    // Sem relatório do dia, os destinos nomeados viram no-op: a ausência de log nunca derruba
+    // a execução, e o composition root não precisa saber se o disco respondeu.
+    internal IReportLog Reports => _dailyLog?.Reports ?? NullReportLog.Instance;
+
     public void Dispose()
     {
         if (_disposed)
@@ -53,7 +57,7 @@ internal sealed class ConsoleApplicationEnvironment : IDisposable
         try
         {
             var dailyLog = DailyLog.Start(AppContext.BaseDirectory, "DLLNelogica");
-            Console.WriteLine($"Log diário inicializado em: {dailyLog.CurrentFilePath}");
+            Console.WriteLine($"Relatórios do dia em: {dailyLog.CurrentDirectory}");
             return dailyLog;
         }
         catch (Exception exception)

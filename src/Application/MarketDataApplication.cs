@@ -19,7 +19,7 @@ internal sealed class MarketDataApplication
     internal async Task<int> RunAsync(ApplicationOptions options)
     {
         using var shutdown = new ConsoleShutdown();
-        var pipeline = _pipelineFactory.Start(options.MarketData.ChannelCapacity, shutdown.Source);
+        using var pipeline = _pipelineFactory.Start(options.MarketData, shutdown.Source);
         var exitCode = 1;
         try
         {

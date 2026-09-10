@@ -7,6 +7,65 @@ alterações técnicas em detalhe.
 Os marcos seguem a sequência das aulas, não versionamento semântico. Trabalhos estruturais
 entre aulas recebem um nome próprio e não avançam artificialmente a numeração da série.
 
+## [Retrofit pós-Aula 03] - 2026-09-10
+
+A primeira execução em pregão aberto entregou 1.325 cotações em 55 segundos, contra as quatro
+do teste com mercado fechado. O registro em arquivo único deixou de servir, e a aplicação não
+tinha nenhuma visão do mercado enquanto rodava. Este marco reorganiza a observabilidade em
+torno desse volume. Ele **não é a Aula 04** e não altera o consumo de Market Data em si.
+
+### Adicionado
+
+- Diretório por dia em `Relatorios/AAAAMMDD/`, com rotação automática na virada.
+- Um arquivo por instrumento, nomeado `<TICKER>_<BOLSA>.txt`, com uma linha por cotação.
+- `_Sessao.txt` para o relato da execução e `_Resumo.txt` para a amostragem periódica.
+- Relatório periódico de market data, finalmente governado por `ReportIntervalSeconds`: último
+  preço e contagem de negócios de cada instrumento no intervalo.
+- `IReportLog`, porta de escrita em destinos nomeados, com `NullReportLog` para quando o
+  relatório do dia não pôde ser inicializado.
+- `ReportFileWriter`, que mantém um gravador por arquivo aberto sob demanda.
+- `MarketDataSnapshot` e `MarketDataReporter`, responsáveis pela amostra de cada intervalo.
+- Higienização do ticker antes de virar nome de arquivo.
+- Carimbo de chegada ao lado do `pwcDate` da bolsa em cada linha de tick.
+
+### Alterado
+
+- `DailyFileWriter` deu lugar a `ReportFileWriter`: de um arquivo diário para vários destinos
+  dentro do diretório do dia.
+- O relato da sessão passou de `log/AAAAMMDD.log` para `Relatorios/AAAAMMDD/_Sessao.txt`.
+- O carimbo de linha passou a depender do destino: data, hora e origem no relato; apenas hora
+  com milissegundos nos arquivos de tick.
+- `MarketDataRuntimePipeline` passou a receber `MarketDataOptions` inteiro e a ser
+  `IDisposable`.
+
+### Removido
+
+- `MarketData.HistoryCapacityPerInstrument` do `appsettings.json` e do código. Era exigido e
+  validado desde a Aula 03 sem que nada o consumisse: configuração que promete o que o
+  programa não entrega é pior que configuração ausente.
+
+### Descobertas registradas
+
+- A diferença entre o carimbo de chegada e o `pwcDate` da bolsa expõe a latência real do
+  caminho até a aplicação: entre 100 e 200 ms de forma consistente.
+- A sequência de chegada é global entre instrumentos, então cruzar os arquivos por esse número
+  reconstrói a ordem real dos eventos.
+- Um relatório periódico preso ao token de encerramento travaria a drenagem no caminho de
+  falha, onde esse token nunca é cancelado. O relator precisa da própria parada.
+- `LoginResult=MaxHID` na ProfitDLL significa "todos os seus logins estão em uso". O callback
+  de estado devolve apenas o resultado 200; o motivo só aparece no `LogDesktop` da própria DLL.
+
+### Verificado
+
+- Build estrito com zero avisos e zero erros.
+- Execução em pregão aberto com quatro instrumentos: 1.325 cotações recebidas, zero descartadas
+  e zero tickers inválidos.
+- As linhas gravadas nos arquivos de instrumento — 1.208, 92, 20 e 5 — somam exatamente as
+  1.325 cotações contabilizadas, comprovando que a gravação distribuída não perde eventos.
+- Volume medido: 138 KB em 55 segundos, o equivalente a mais de 70 MB por pregão. Não há
+  política de retenção, por decisão explícita do mantenedor.
+- Credenciais, relatórios e artefatos dessa validação foram descartados após a execução.
+
 ## [Aula 03] - 2026-09-06
 
 Primeiro consumo real de Market Data: assinatura de instrumentos, recebimento de cotações e
@@ -171,6 +230,7 @@ Aula 03** e não implementa consumo de Market Data.
 - Uma nova inicialização após `DLLFinalize` no mesmo processo não completa todos os estados;
   a reconexão exige outro processo.
 
+[Retrofit pós-Aula 03]: https://github.com/YouTrade/DLLNelogica/compare/aula-03...aula-03-retrofit
 [Aula 03]: https://github.com/YouTrade/DLLNelogica/compare/aula-02-retrofit...aula-03
 [Retrofit pós-Aula 02]: https://github.com/YouTrade/DLLNelogica/compare/aula-02...aula-02-retrofit
 [Aula 02]: https://github.com/YouTrade/DLLNelogica/compare/aula-01...aula-02

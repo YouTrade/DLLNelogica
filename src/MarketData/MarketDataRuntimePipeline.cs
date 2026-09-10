@@ -1,11 +1,18 @@
+using DLLNelogica.Configuration;
 using DLLNelogica.Connection;
 using DLLNelogica.Interop;
+using DLLNelogica.Logging;
 
 namespace DLLNelogica.MarketData;
 
-internal sealed class MarketDataRuntimePipeline
+internal sealed class MarketDataRuntimePipeline : IDisposable
 {
     private readonly CancellationTokenSource _shutdownRequested;
+
+    // O relator tem a própria parada. O token de encerramento só é cancelado pelo Ctrl+C —
+    // numa falha de conexão ele permanece ativo, e esperar por um timer que ninguém cancelou
+    // travaria a drenagem para sempre.
+    private readonly CancellationTokenSource _reporterStop = new();
     private readonly ProfitCallbackBridge _callbackBridge;
     private readonly ConnectionStateEventPump _stateEvents;
     private readonly MarketDataMetrics _metrics;
@@ -13,20 +20,29 @@ internal sealed class MarketDataRuntimePipeline
     private readonly Task _stateConsumer;
     private readonly Task _priceConsumer;
     private readonly Task _invalidTickerConsumer;
+    private readonly Task _reporter;
 
     internal MarketDataRuntimePipeline(
-        int channelCapacity,
+        MarketDataOptions marketData,
         CancellationTokenSource shutdownRequested,
         ProfitCallbackBridge callbackBridge,
         ConnectionStateEventPump stateEvents,
         MarketDataSubscriptionManager subscriptions,
-        MarketDataMetrics metrics)
+        MarketDataMetrics metrics,
+        IReportLog reportLog)
     {
         _shutdownRequested = shutdownRequested;
         _callbackBridge = callbackBridge;
         _stateEvents = stateEvents;
         _metrics = metrics;
-        _marketEvents = new MarketPriceEventPump(channelCapacity, metrics);
+
+        var snapshot = new MarketDataSnapshot();
+        _marketEvents = new MarketPriceEventPump(
+            marketData.ChannelCapacity,
+            metrics,
+            snapshot,
+            reportLog);
+
         callbackBridge.AttachShutdown(shutdownRequested);
         callbackBridge.AttachMarketData(_marketEvents);
         _stateConsumer = stateEvents.RunAsync(shutdownRequested);
@@ -34,13 +50,20 @@ internal sealed class MarketDataRuntimePipeline
         _invalidTickerConsumer = _marketEvents.ObserveInvalidTickersAsync(
             subscriptions,
             shutdownRequested);
+        _reporter = new MarketDataReporter(
+            snapshot,
+            metrics,
+            reportLog,
+            marketData.ReportIntervalSeconds).RunAsync(_reporterStop.Token);
     }
 
     internal async Task<bool> CompleteAndDrainAsync()
     {
+        await _reporterStop.CancelAsync().ConfigureAwait(false);
         _marketEvents.Complete();
         _stateEvents.Complete();
-        await Task.WhenAll(_stateConsumer, _priceConsumer, _invalidTickerConsumer).ConfigureAwait(false);
+        await Task.WhenAll(_stateConsumer, _priceConsumer, _invalidTickerConsumer, _reporter)
+            .ConfigureAwait(false);
 
         var isSuccessful =
             !_stateEvents.HasFailed &&
@@ -56,6 +79,8 @@ internal sealed class MarketDataRuntimePipeline
         _callbackBridge.DetachShutdown(_shutdownRequested);
         return isSuccessful;
     }
+
+    public void Dispose() => _reporterStop.Dispose();
 
     private static void TryWriteLine(string message)
     {

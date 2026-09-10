@@ -3,7 +3,6 @@ namespace DLLNelogica.Configuration;
 internal static class ConfigurationValidator
 {
     private const int MaximumChannelCapacity = 1_000_000;
-    private const int MaximumHistoryCapacity = 100_000;
     private const int MaximumReportIntervalSeconds = 3600;
 
     internal static List<string> GetIssues(ApplicationOptions options)
@@ -18,12 +17,6 @@ internal static class ConfigurationValidator
             1,
             MaximumChannelCapacity,
             "MarketData.ChannelCapacity",
-            issues);
-        ValidateRange(
-            options.MarketData.HistoryCapacityPerInstrument,
-            1,
-            MaximumHistoryCapacity,
-            "MarketData.HistoryCapacityPerInstrument",
             issues);
         ValidateRange(
             options.MarketData.ReportIntervalSeconds,

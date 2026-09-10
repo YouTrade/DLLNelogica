@@ -18,10 +18,12 @@ publish/
 *.sln.docstates
 
 # ---------------------------------------------------------------------------
-# Logs
-# A aplicação grava em "log/"; a ProfitDLL grava em "logs/". Nenhum dos dois
-# deve ser versionado: podem conter dados operacionais.
+# Relatórios e logs
+# A aplicação grava em "Relatorios/AAAAMMDD/"; a ProfitDLL grava em "logs/".
+# Nenhum dos dois deve ser versionado: contêm dados operacionais, e os arquivos
+# por instrumento chegam facilmente a centenas de MB por pregão.
 # ---------------------------------------------------------------------------
+Relatorios/
 log/
 logs/
 *.log
