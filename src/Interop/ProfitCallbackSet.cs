@@ -7,4 +7,5 @@ internal readonly record struct ProfitCallbackSet(
     TProgressCallBack Progress,
     TNewTinyBookCallBack TinyBook,
     TChangeCotation ChangeCotation,
-    TInvalidTickerCallback InvalidTicker);
+    TInvalidTickerCallback InvalidTicker,
+    TConnectorTradeCallback TradeV2);

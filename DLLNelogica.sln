@@ -6,6 +6,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DLLNelogica", "src\DLLNelogica.csproj", "{119FC9B4-D873-4A48-ADB0-234B59F664E9}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DLLNelogica.Tests", "tests\DLLNelogica.Tests\DLLNelogica.Tests.csproj", "{5C746FFD-B981-4B90-856B-F180F7B22C25}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -16,11 +20,16 @@ Global
 		{119FC9B4-D873-4A48-ADB0-234B59F664E9}.Debug|x64.Build.0 = Debug|x64
 		{119FC9B4-D873-4A48-ADB0-234B59F664E9}.Release|x64.ActiveCfg = Release|x64
 		{119FC9B4-D873-4A48-ADB0-234B59F664E9}.Release|x64.Build.0 = Release|x64
+		{5C746FFD-B981-4B90-856B-F180F7B22C25}.Debug|x64.ActiveCfg = Debug|x64
+		{5C746FFD-B981-4B90-856B-F180F7B22C25}.Debug|x64.Build.0 = Debug|x64
+		{5C746FFD-B981-4B90-856B-F180F7B22C25}.Release|x64.ActiveCfg = Release|x64
+		{5C746FFD-B981-4B90-856B-F180F7B22C25}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{119FC9B4-D873-4A48-ADB0-234B59F664E9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{5C746FFD-B981-4B90-856B-F180F7B22C25} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

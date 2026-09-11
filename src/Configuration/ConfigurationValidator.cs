@@ -24,7 +24,14 @@ internal static class ConfigurationValidator
             MaximumReportIntervalSeconds,
             "MarketData.ReportIntervalSeconds",
             issues);
+        ValidateRange(
+            options.TimesAndTrades.ChannelCapacity,
+            1,
+            MaximumChannelCapacity,
+            "TimesAndTrades.ChannelCapacity",
+            issues);
         ValidateInstruments(options.MarketData.Instruments, issues);
+        ReportDestinationValidator.Validate(options, issues);
 
         return issues;
     }

@@ -33,6 +33,22 @@ internal static class ProfitFunctions
     internal static extern int SetInvalidTickerCallback(TInvalidTickerCallback callback);
 
     [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int SetTradeCallbackV2(TConnectorTradeCallback callback);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int TranslateTrade(nint tradePointer, ref TConnectorTrade trade);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int GetAgentNameLength(int agentId, AgentNameFlags flags);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int GetAgentName(
+        int agentLength,
+        int agentId,
+        [Out, MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.U2)] char[] agentName,
+        AgentNameFlags flags);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
     internal static extern int SubscribeTicker(
         [MarshalAs(UnmanagedType.LPWStr)] string ticker,
         [MarshalAs(UnmanagedType.LPWStr)] string exchange);

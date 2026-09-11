@@ -6,12 +6,20 @@ internal sealed class ProfitSession
 {
     private readonly IProfitApi _profitApi;
     private readonly ProfitCallbackBridge _callbackBridge;
+    private readonly ProfitAgentNameLookup _agentNames;
+    private bool _callbacksRegistered;
 
     internal ProfitSession(IProfitApi profitApi, ProfitCallbackBridge callbackBridge)
     {
         _profitApi = profitApi;
         _callbackBridge = callbackBridge;
+        _agentNames = new ProfitAgentNameLookup(profitApi);
     }
+
+    internal bool CanReceiveTrades => _callbackBridge.HasTradeSink;
+
+    internal AgentNameLookupResult LookupAgentName(int agentId, AgentNameFlags flags) =>
+        _agentNames.Lookup(agentId, flags);
 
     internal ProfitInitializationResult Initialize(CredentialsOptions credentials)
     {
@@ -62,6 +70,7 @@ internal sealed class ProfitSession
             if (nativeResult == (int)NResult.NL_OK)
             {
                 ProfitProcessLifetime.MarkInitializationAccepted();
+                _agentNames.Start();
                 return ProfitInitializationResult.Accepted();
             }
 
@@ -88,8 +97,11 @@ internal sealed class ProfitSession
         }
     }
 
+    internal void StopAgentNameQueries() => _agentNames.StopAndWait();
+
     internal ProfitFinalizationResult FinalizeOnce()
     {
+        _agentNames.StopAndWait();
         if (!ProfitProcessLifetime.TryBeginFinalization())
         {
             return ProfitFinalizationResult.NotRequired();
@@ -105,7 +117,7 @@ internal sealed class ProfitSession
         }
     }
 
-    internal MarketDataCallbackRegistrationResult RegisterMarketDataCallbacks()
+    internal MarketDataCallbackRegistrationResult RegisterMarketDataCallbacks(bool enableTrades = false)
     {
         var changeCotation = ExecuteNativeCall(
             "SetChangeCotationCallback",
@@ -113,18 +125,34 @@ internal sealed class ProfitSession
         var invalidTicker = ExecuteNativeCall(
             "SetInvalidTickerCallback",
             () => _profitApi.SetInvalidTickerCallback(ProfitCallbackRoots.Callbacks.InvalidTicker));
-        return new MarketDataCallbackRegistrationResult(changeCotation, invalidTicker);
+        NativeCallResult? tradeV2 = enableTrades ? RegisterTradeCallback() : null;
+        var registration = new MarketDataCallbackRegistrationResult(changeCotation, invalidTicker, tradeV2);
+        _callbacksRegistered = registration.IsSuccessful;
+        return registration;
     }
 
     internal NativeCallResult Subscribe(string ticker, string exchange) =>
-        ExecuteNativeCall(
-            $"SubscribeTicker({ticker}:{exchange})",
-            () => _profitApi.SubscribeTicker(ticker, exchange));
+        _callbacksRegistered
+            ? ExecuteNativeCall(
+                $"SubscribeTicker({ticker}:{exchange})",
+                () => _profitApi.SubscribeTicker(ticker, exchange))
+            : NativeCallResult.Failed(
+                $"SubscribeTicker({ticker}:{exchange})",
+                new InvalidOperationException("Os callbacks obrigatórios não foram registrados."));
 
     internal NativeCallResult Unsubscribe(string ticker, string exchange) =>
         ExecuteNativeCall(
             $"UnsubscribeTicker({ticker}:{exchange})",
             () => _profitApi.UnsubscribeTicker(ticker, exchange));
+
+    private NativeCallResult RegisterTradeCallback() =>
+        CanReceiveTrades
+            ? ExecuteNativeCall(
+                "SetTradeCallbackV2",
+                () => _profitApi.SetTradeCallbackV2(ProfitCallbackRoots.Callbacks.TradeV2))
+            : NativeCallResult.Failed(
+                "SetTradeCallbackV2",
+                new InvalidOperationException("O pipeline de Times and Trades não está conectado."));
 
     private static string FormatNativeResult(int result)
     {

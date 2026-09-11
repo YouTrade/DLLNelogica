@@ -87,3 +87,17 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 .DS_Store
+
+# ---------------------------------------------------------------------------
+# Estado de sessão de ferramentas de assistência
+# Artefatos locais do agente; não fazem parte do material publicado.
+# ---------------------------------------------------------------------------
+.claudecodex/
+
+# ---------------------------------------------------------------------------
+# Material não publicado
+# Decisão do mantenedor: a documentação de trabalho fica local. O código de
+# src/ e o projeto de testes em tests/ continuam publicados, mantendo o
+# DLLNelogica.sln coerente para quem clonar o repositório.
+# ---------------------------------------------------------------------------
+docs/

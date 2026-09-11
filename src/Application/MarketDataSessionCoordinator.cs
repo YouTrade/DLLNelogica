@@ -24,18 +24,7 @@ internal sealed class MarketDataSessionCoordinator
 
     internal async Task<int> RunAsync(ApplicationOptions options, ConsoleShutdown shutdown)
     {
-        var initialization = _profitSession.Initialize(options.Credenciais);
-        if (!initialization.IsAccepted)
-        {
-            TryWriteLine(initialization.Message, true);
-            return 1;
-        }
-
-        TryWriteLine("DLLInitializeLogin retornou NL_OK; registrando callbacks de Market Data.");
-        var registration = _profitSession.RegisterMarketDataCallbacks();
-        ReportNativeResult(registration.ChangeCotation);
-        ReportNativeResult(registration.InvalidTicker);
-        if (!registration.IsSuccessful)
+        if (!MarketDataSessionStartup.TryStart(_profitSession, options))
         {
             return 1;
         }
@@ -50,6 +39,7 @@ internal sealed class MarketDataSessionCoordinator
 
     internal bool Shutdown()
     {
+        _profitSession.StopAgentNameQueries();
         var unsubscribeResults = _subscriptions.UnsubscribeAll();
         var isSuccessful = unsubscribeResults.All(result => result.IsSuccessful);
         if (!ProfitProcessLifetime.IsFinalizationRequired)
@@ -113,18 +103,6 @@ internal sealed class MarketDataSessionCoordinator
         }
 
         return 1;
-    }
-
-    private static void ReportNativeResult(NativeCallResult result)
-    {
-        if (result.IsSuccessful)
-        {
-            TryWriteLine(result.Message);
-        }
-        else
-        {
-            TryWriteLine(result.Message, true);
-        }
     }
 
     private static void TryWriteLine(string message, bool isError = false)

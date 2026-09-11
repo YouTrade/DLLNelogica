@@ -38,6 +38,9 @@ internal static class ProfitCallbackRoots
     /// </summary>
     private static readonly TInvalidTickerCallback InvalidTickerCallback = HandleInvalidTicker;
 
+    // A DLL retém esse ponteiro: manter vivo também durante finalização e callbacks tardios.
+    private static readonly TConnectorTradeCallback TradeCallbackV2 = HandleTradeV2;
+
     private static ProfitCallbackBridge? _activeBridge;
 
     internal static ProfitCallbackSet Callbacks { get; } = new(
@@ -47,7 +50,8 @@ internal static class ProfitCallbackRoots
         ProgressCallback,
         TinyBookCallback,
         ChangeCotationCallback,
-        InvalidTickerCallback);
+        InvalidTickerCallback,
+        TradeCallbackV2);
 
     internal static void Attach(ProfitCallbackBridge bridge)
     {
@@ -196,6 +200,22 @@ internal static class ProfitCallbackRoots
         try
         {
             bridge?.HandleInvalidTicker(assetId);
+        }
+        catch
+        {
+            ProfitProcessLifetime.SignalCallbackFailure();
+            bridge?.SignalFailureNoThrow();
+        }
+    }
+    private static void HandleTradeV2(
+        TConnectorAssetIdentifier asset,
+        nint tradePointer,
+        TConnectorTradeCallbackFlags flags)
+    {
+        var bridge = Volatile.Read(ref _activeBridge);
+        try
+        {
+            bridge?.HandleTradeV2(asset, tradePointer, flags);
         }
         catch
         {

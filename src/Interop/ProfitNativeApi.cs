@@ -44,6 +44,18 @@ internal sealed class ProfitNativeApi : IProfitApi
     public int SetInvalidTickerCallback(TInvalidTickerCallback callback) =>
         ProfitFunctions.SetInvalidTickerCallback(callback);
 
+    public int SetTradeCallbackV2(TConnectorTradeCallback callback) =>
+        ProfitFunctions.SetTradeCallbackV2(callback);
+
+    public int TranslateTrade(nint tradePointer, ref TConnectorTrade trade) =>
+        ProfitFunctions.TranslateTrade(tradePointer, ref trade);
+
+    public int GetAgentNameLength(int agentId, AgentNameFlags flags) =>
+        ProfitFunctions.GetAgentNameLength(agentId, flags);
+
+    public int GetAgentName(int agentLength, int agentId, char[] agentName, AgentNameFlags flags) =>
+        ProfitFunctions.GetAgentName(agentLength, agentId, agentName, flags);
+
     public int SubscribeTicker(string ticker, string exchange) =>
         ProfitFunctions.SubscribeTicker(ticker, exchange);
 

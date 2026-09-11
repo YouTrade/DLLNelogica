@@ -3,6 +3,7 @@ using DLLNelogica.Configuration;
 using DLLNelogica.Connection;
 using DLLNelogica.Interop;
 using DLLNelogica.MarketData;
+using DLLNelogica.TimesAndTrades;
 
 namespace DLLNelogica;
 
@@ -13,8 +14,8 @@ internal static class Program
         using var environment = ConsoleApplicationEnvironment.Start();
         var connectionState = new ConnectionStateMachine();
         var stateEvents = new ConnectionStateEventPump(connectionState);
-        var callbackBridge = new ProfitCallbackBridge(stateEvents);
         IProfitApi profitApi = new ProfitNativeApi(AppContext.BaseDirectory);
+        var callbackBridge = new ProfitCallbackBridge(stateEvents, profitApi);
         var profitSession = new ProfitSession(profitApi, callbackBridge);
         var configurationLoader = new JsonConfigurationLoader(AppContext.BaseDirectory);
         var metrics = new MarketDataMetrics();
@@ -29,7 +30,8 @@ internal static class Program
             profitSession,
             connectionState,
             subscriptions);
-        var marketDataApplication = new MarketDataApplication(sessionCoordinator, pipelineFactory);
+        var tradeFactory = new TradePipelineFactory(callbackBridge, profitSession, environment.Reports, AppContext.BaseDirectory);
+        var marketDataApplication = new MarketDataApplication(sessionCoordinator, pipelineFactory, tradeFactory);
         var application = new ApplicationRunner(configurationLoader, marketDataApplication);
 
         return await application.RunAsync().ConfigureAwait(false);

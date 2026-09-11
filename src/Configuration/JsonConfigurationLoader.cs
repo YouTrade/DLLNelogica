@@ -60,6 +60,33 @@ internal sealed class JsonConfigurationLoader
         EnsureRequiredIntegerProperty(marketData, "MarketData", "ChannelCapacity");
         EnsureRequiredIntegerProperty(marketData, "MarketData", "ReportIntervalSeconds");
         ValidateInstruments(marketData);
+        ValidateTimesAndTrades(root);
+    }
+
+    private static void ValidateTimesAndTrades(JsonElement root)
+    {
+        if (!root.TryGetProperty("TimesAndTrades", out _))
+        {
+            return;
+        }
+
+        var options = GetRequiredObject(root, "TimesAndTrades");
+        EnsureOptionalBooleanProperty(options, "Enabled");
+        EnsureOptionalBooleanProperty(options, "ResolveAgentNames");
+        if (options.TryGetProperty("ChannelCapacity", out _))
+        {
+            EnsureRequiredIntegerProperty(options, "TimesAndTrades", "ChannelCapacity");
+        }
+    }
+
+    private static void EnsureOptionalBooleanProperty(JsonElement parent, string propertyName)
+    {
+        if (parent.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new ConfigurationException(
+                $"A propriedade TimesAndTrades.{propertyName} deve ser um booleano.");
+        }
     }
 
     private static JsonElement GetRequiredObject(JsonElement parent, string propertyName)

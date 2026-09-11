@@ -2,6 +2,12 @@ using System.Runtime.InteropServices;
 
 namespace DLLNelogica.Interop;
 
+[UnmanagedFunctionPointer(CallingConvention.StdCall)]
+internal delegate void TConnectorTradeCallback(
+    TConnectorAssetIdentifier asset,
+    nint tradePointer,
+    [MarshalAs(UnmanagedType.U4)] TConnectorTradeCallbackFlags flags);
+
 internal delegate void TStateCallback(int stateType, int result);
 
 internal delegate void TChangeCotation(

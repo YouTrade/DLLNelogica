@@ -1,17 +1,67 @@
 using DLLNelogica.Connection;
 using DLLNelogica.MarketData;
+using DLLNelogica.TimesAndTrades;
 
 namespace DLLNelogica.Interop;
 
 internal sealed class ProfitCallbackBridge
 {
     private readonly ConnectionStateEventPump _stateEvents;
+    private readonly ProfitTradeTranslator _tradeTranslator;
+    private ITradeEventSink? _tradeEvents;
     private MarketPriceEventPump? _marketPriceEvents;
     private CancellationTokenSource? _shutdownRequested;
 
-    internal ProfitCallbackBridge(ConnectionStateEventPump stateEvents)
+    internal ProfitCallbackBridge(ConnectionStateEventPump stateEvents, IProfitApi profitApi)
     {
         _stateEvents = stateEvents;
+        _tradeTranslator = new ProfitTradeTranslator(profitApi);
+    }
+
+    internal Guid TradeSessionId => _tradeTranslator.SessionId;
+
+    internal bool HasTradeSink => Volatile.Read(ref _tradeEvents) is not null;
+
+    internal void AttachTrades(ITradeEventSink tradeEvents)
+    {
+        var existing = Interlocked.CompareExchange(ref _tradeEvents, tradeEvents, null);
+        if (existing is not null && !ReferenceEquals(existing, tradeEvents))
+        {
+            throw new InvalidOperationException("Um segundo destino de negócios foi bloqueado.");
+        }
+    }
+
+    internal void DetachTrades(ITradeEventSink tradeEvents) =>
+        Interlocked.CompareExchange(ref _tradeEvents, null, tradeEvents);
+
+    internal void HandleTradeV2(
+        TConnectorAssetIdentifier asset,
+        nint tradePointer,
+        TConnectorTradeCallbackFlags flags)
+    {
+        var events = Volatile.Read(ref _tradeEvents)
+            ?? throw new InvalidOperationException("O pipeline de Times and Trades não está conectado.");
+        var instrument = new MarketInstrument(asset.Ticker, asset.Exchange, asset.FeedType);
+        try
+        {
+            var translation = _tradeTranslator.Translate(asset, tradePointer, flags);
+            if (!translation.IsSuccessful)
+            {
+                events.RecordTranslationFailure(instrument);
+                SignalFailureNoThrow();
+            }
+            else if (!events.TryPublish(translation.Trade!.Value))
+            {
+                SignalFailureNoThrow();
+            }
+        }
+#pragma warning disable CA1031 // A raiz mantém a última barreira; contar falhas antes de sinalizar.
+        catch (Exception)
+        {
+            events.RecordCallbackFailure(instrument);
+            SignalFailureNoThrow();
+        }
+#pragma warning restore CA1031
     }
 
     internal void AttachShutdown(CancellationTokenSource shutdownRequested) =>
@@ -102,13 +152,23 @@ internal sealed class ProfitCallbackBridge
     {
         ProfitProcessLifetime.SignalCallbackFailure();
 
+        var shutdown = Volatile.Read(ref _shutdownRequested);
+        if (shutdown is not null)
+        {
+            _ = CancelShutdownNoThrowAsync(shutdown);
+        }
+    }
+
+    private static async Task CancelShutdownNoThrowAsync(CancellationTokenSource shutdown)
+    {
         try
         {
-            Volatile.Read(ref _shutdownRequested)?.Cancel();
+            await shutdown.CancelAsync().ConfigureAwait(false);
         }
-        catch
+#pragma warning disable CA1031 // Registros de cancelamento não executam na thread do callback.
+        catch (Exception)
         {
-            // Esta sinalização roda na fronteira nativa e não pode propagar uma segunda falha.
         }
+#pragma warning restore CA1031
     }
 }
