@@ -109,7 +109,6 @@ internal sealed class ProfitCallbackBridge
     }
 
 #pragma warning disable CA1822 // Pontos de extensão de instância para o pipeline limitado da Aula 03.
-
     internal void HandleNewDaily(
         TAssetID assetId,
         string? date,

@@ -8,7 +8,7 @@ Os marcos seguem a sequência das aulas, não versionamento semântico. Cada aul
 o trabalho estrutural feito logo depois de uma aula (o *retrofit*) fica registrado dentro dela,
 e as etapas internas de uma aula maior aparecem como subseções, não como marcos próprios.
 
-## [Aula 05 — contas cadastradas e relatório sem pontas soltas] - 2026-09-22
+## Aula 05 (2026-09-22): contas cadastradas e relatório sem pontas soltas
 
 As contas que a DLL anuncia após o login passaram a ser registradas no relatório do dia, e a
 preparação do Times and Trades ganhou uma linha de conclusão. As quatro sprints de Times and
@@ -63,7 +63,7 @@ o log sem nenhuma linha que a fechasse: o sucesso ficava implícito na inicializ
   permaneceu com campos vazios. A alteração diagnóstica que exibia os estados de roteamento
   foi revertida antes do commit.
 
-## [Aula 04 — Times and Trades] - 2026-09-11
+## Aula 04 (2026-09-11): Times and Trades
 
 Captura de negócios realizados (Times and Trades) pela API V2 da ProfitDLL, do callback
 nativo até um arquivo por instrumento, com confirmação após flush e conferência em pregão
@@ -162,7 +162,7 @@ armazenamento resistirá a falta de energia.
   civil; patamar mínimo proposto de 4.016 eventos/s).
 - Execuções operacionais adicionais sem negócios e com T&T desabilitado.
 
-## [Aula 03] - 2026-09-06
+## Aula 03 (2026-09-06)
 
 Primeiro consumo real de Market Data: assinatura de instrumentos, recebimento de cotações e
 desassinatura ordenada no encerramento.
@@ -254,7 +254,7 @@ desse volume, sem alterar o consumo de Market Data em si.
   e as linhas gravadas (1.208, 92, 20 e 5) somam exatamente esse total; 138 KB em 55 segundos,
   mais de 70 MB por pregão, sem política de retenção por decisão do mantenedor.
 
-## [Aula 02] - 2026-08-26
+## Aula 02 (2026-08-26)
 
 ### Adicionado
 
@@ -301,7 +301,7 @@ Reorganização e endurecimento da base das duas primeiras aulas, sem consumo de
 - **Verificado:** build estrito sem avisos, regras comprovadas por builds negativos, conexão
   real ponta a ponta com os quatro estados, `DLLFinalize` zero e saída zero após `Ctrl+C`.
 
-## [Aula 01] - 2026-08-24
+## Aula 01 (2026-08-24)
 
 ### Adicionado
 
@@ -324,9 +324,3 @@ Reorganização e endurecimento da base das duas primeiras aulas, sem consumo de
 - Estados podem chegar fora de ordem e oscilar durante a inicialização.
 - Uma nova inicialização após `DLLFinalize` no mesmo processo não completa todos os estados;
   a reconexão exige outro processo.
-
-[Retrofit pós-Aula 03]: https://github.com/YouTrade/DLLNelogica/compare/aula-03...aula-03-retrofit
-[Aula 03]: https://github.com/YouTrade/DLLNelogica/compare/aula-02-retrofit...aula-03
-[Retrofit pós-Aula 02]: https://github.com/YouTrade/DLLNelogica/compare/aula-02...aula-02-retrofit
-[Aula 02]: https://github.com/YouTrade/DLLNelogica/compare/aula-01...aula-02
-[Aula 01]: https://github.com/YouTrade/DLLNelogica/releases/tag/aula-01
