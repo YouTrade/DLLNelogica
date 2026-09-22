@@ -19,14 +19,9 @@ por que um estado precisa ser travado e não reavaliado.
 | Marco | Data | Resultado principal |
 |-------|------|---------------------|
 | Aula 01 | 2026-08-24 | Conexão, quatro estados obrigatórios e ciclo de vida da ProfitDLL |
-| Aula 02 | 2026-08-26 | Relatório diário e observabilidade antes do Market Data |
-| Retrofit pós-Aula 02 | 2026-08-28 | Arquitetura, DI manual, resiliência de callbacks e logging assíncrono |
-| Aula 03 | 2026-09-06 | Consumo de Market Data: assinatura de instrumentos e cotações |
-| Retrofit pós-Aula 03 | 2026-09-10 | Relatórios por instrumento e visão contínua do mercado |
-| Aula 04 — T&T Sprint 1 | 2026-09-11 | Contratos V2 e tradução segura dos dados da DLL para C# |
-| Aula 04 — T&T Sprint 2 | 2026-09-11 | Fila, classificação dos negócios, participantes e contadores |
-| Aula 04 — T&T Sprint 3 | 2026-09-11 | Captura integrada, arquivos próprios e confirmação após flush |
-| Aula 04 — T&T Sprint 4 | 2026-09-11 | Captura real curta, reconciliação dos oito arquivos e 101 testes; homologação integral pendente |
+| Aula 02 | 2026-08-26<br>2026-08-28 | Relatório diário e observabilidade antes do Market Data<br>Retrofit: arquitetura, DI manual, resiliência de callbacks e logging assíncrono |
+| Aula 03 | 2026-09-06<br>2026-09-10 | Consumo de Market Data: assinatura de instrumentos e cotações<br>Retrofit: relatórios por instrumento e visão contínua do mercado |
+| Aula 04 | 2026-09-11 | Times and Trades em quatro sprints: contratos V2 e tradução segura; fila, classificação e participantes; arquivos próprios com confirmação após flush; captura real e reconciliação dos oito arquivos com 101 testes |
 | Aula 05 | 2026-09-22 | Contas cadastradas no relatório e par início/fim da preparação de T&T |
 
 O histórico curado, incluindo o estado original da Aula 01 e as decisões do retrofit, está
