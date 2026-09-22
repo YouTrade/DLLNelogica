@@ -1,8 +1,8 @@
 # DLLNelogica — Projeto Educacional
 
-> Série **Programando o seu robô de trading com a DLL da Nelogica** — **Aula 03 concluída,
-> com os marcos posteriores de observabilidade e Times and Trades: cotações e negócios
-> em arquivos separados por instrumento.**
+> Série **Programando o seu robô de trading com a DLL da Nelogica** — **Aula 05 concluída:
+> as contas cadastradas aparecem no relatório logo após o login, e a preparação do Times and
+> Trades passou a ter início e fim registrados.**
 
 Exemplo didático em C# que demonstra, do zero, como estabelecer uma conexão com a
 **ProfitDLL da Nelogica**: autenticar, confirmar que todos os serviços subiram, assinar
@@ -23,17 +23,95 @@ por que um estado precisa ser travado e não reavaliado.
 | Retrofit pós-Aula 02 | 2026-08-28 | Arquitetura, DI manual, resiliência de callbacks e logging assíncrono |
 | Aula 03 | 2026-09-06 | Consumo de Market Data: assinatura de instrumentos e cotações |
 | Retrofit pós-Aula 03 | 2026-09-10 | Relatórios por instrumento e visão contínua do mercado |
-| T&T — Sprint 1 | 2026-09-11 | Contratos V2 e tradução segura dos dados da DLL para C# |
-| T&T — Sprint 2 | 2026-09-11 | Fila, classificação dos negócios, participantes e contadores |
-| T&T — Sprint 3 | 2026-09-11 | Captura integrada, arquivos próprios e confirmação após flush |
-| T&T — Sprint 4 | 2026-09-11 | Captura real curta, reconciliação dos oito arquivos e 101 testes; homologação integral pendente |
+| Aula 04 — T&T Sprint 1 | 2026-09-11 | Contratos V2 e tradução segura dos dados da DLL para C# |
+| Aula 04 — T&T Sprint 2 | 2026-09-11 | Fila, classificação dos negócios, participantes e contadores |
+| Aula 04 — T&T Sprint 3 | 2026-09-11 | Captura integrada, arquivos próprios e confirmação após flush |
+| Aula 04 — T&T Sprint 4 | 2026-09-11 | Captura real curta, reconciliação dos oito arquivos e 101 testes; homologação integral pendente |
+| Aula 05 | 2026-09-22 | Contas cadastradas no relatório e par início/fim da preparação de T&T |
 
 O histórico curado, incluindo o estado original da Aula 01 e as decisões do retrofit, está
 em [CHANGELOG.md](CHANGELOG.md). O README descreve sempre o comportamento atual do projeto.
 
 ---
 
-## Times and Trades — do preço observado ao negócio realizado
+## Aula 05 — as contas atrás do login e o relatório sem pontas soltas
+
+Até a Aula 04 o projeto respondia duas perguntas: *que cotação chegou* e *que negócio foi
+feito*. Nenhuma delas diz **com quais contas este login pode operar**. Antes de qualquer aula
+sobre ordens, é preciso saber que contas a DLL enxerga — e é preciso que o relatório conte
+essa história sem deixar linhas sem explicação. Esta aula resolve as duas coisas, e a segunda
+começou por uma pergunta simples de quem lê o log: "essa linha está solta no início, o que ela
+faz?".
+
+### As contas chegam por callback, não por consulta
+
+A ProfitDLL exporta funções de consulta — `GetAccountCount`, `GetAccounts`,
+`GetAccountDetails` — mas o caminho mais simples já estava no projeto desde a Aula 01, sem
+uso: o `TAccountCallback`, entregue a `DLLInitializeLogin` junto com o `TStateCallback`. Depois
+do login, a DLL chama esse callback uma vez por conta, informando corretora (id e nome), número
+da conta e titular. O tratador existia, mas estava vazio, com um comentário "aula futura".
+
+A implementação seguiu a regra que atravessa a série: **o callback nativo só publica**. A
+conta é convertida em uma linha de texto e entra no mesmo canal que já transporta os estados
+de conexão. O consumidor desse canal, fora da thread da DLL, escreve a linha no relatório.
+Usar o mesmo canal não foi economia: é o que garante que "Login: conectado" e as contas
+apareçam na ordem em que a DLL as anunciou, sem uma segunda fila para sincronizar.
+
+Trecho da execução real desta aula (titular omitido):
+
+```
+2026-09-22 12:49:32 [DLLNelogica] Times and Trades | sessao=73acb387-… | preparação de arquivos iniciada.
+2026-09-22 12:49:32 [DLLNelogica] Times and Trades | destinos prontos: PETR4:B, VALE3:B, WDOV26:F, WINV26:F
+2026-09-22 12:49:32 [DLLNelogica] DLLInitializeLogin retornou NL_OK; registrando callbacks de Market Data.
+2026-09-22 12:49:33 [DLLNelogica] Ativação: licença válida.
+2026-09-22 12:49:33 [DLLNelogica] Login: conectado.
+2026-09-22 12:49:33 [DLLNelogica] Conta cadastrada | corretora=15 (Simulador) | conta=12703 | titular=…
+2026-09-22 12:49:33 [DLLNelogica] Conta cadastrada | corretora=18 (TERRA INVESTIMENTOS DTVM LTDA) | conta=7319 | titular=…
+2026-09-22 12:49:33 [DLLNelogica] Conta cadastrada | corretora=51301 (Elliot-Warren) | conta=1416607 | titular=…
+2026-09-22 12:49:33 [DLLNelogica] Conta cadastrada | corretora=51401 (Elliot-Warren) | conta=1416607 | titular=…
+2026-09-22 12:49:33 [DLLNelogica] Market Data: conectado e pronto para receber cotações.
+2026-09-22 12:49:33 [DLLNelogica] Conexão confirmada pelos quatro estados obrigatórios.
+```
+
+### O que a primeira versão revelou: a DLL reanuncia a lista
+
+Na primeira execução cada conta apareceu **duas vezes**. Uma rodada diagnóstica, com os
+estados de roteamento temporariamente visíveis, mostrou que não era um bug do canal: a DLL
+reenvia a **lista completa** de contas a cada atualização interna, várias vezes na mesma
+sessão. Em uma execução foram duas passagens; em outra, seis — e o conteúdo variou entre
+elas: quatro passagens com quatro contas (incluindo a de simulador), duas passagens só com as
+duas contas reais.
+
+A lição é a mesma da Aula 03 com o handshake de roteamento: **o que a DLL repete, a aplicação
+filtra — e registra uma vez.** O tratador do callback guarda o par corretora+conta já
+anunciado e ignora as repetições. A primeira ocorrência vence, porque é ela que aparece na
+ordem correta do log. A mesma conta pode aparecer sob dois ids de corretora (51301 e 51401
+acima); o projeto registra o que a DLL informa e não tenta interpretar.
+
+Uma consequência prática: o número de contas exibido pode variar entre execuções, porque
+depende do que a DLL anunciou naquele momento. Isso é comportamento da DLL, não do código.
+
+### O par início/fim da preparação de T&T
+
+A linha "preparação de arquivos iniciada" já existia desde a Sprint 3 da Aula 04: antes de
+subir a DLL, o consumidor de T&T abre um arquivo por instrumento, e a aplicação espera esse
+sinal de pronto. Se um arquivo não abre, a captura nem começa. O problema era de leitura: a
+linha anunciava um início cujo fim ficava implícito na linha seguinte, "DLLInitializeLogin
+retornou NL_OK". Agora, assim que o sinal de pronto é liberado, o relatório registra
+"destinos prontos" com a lista dos instrumentos, e o par fecha antes da DLL ser iniciada.
+
+### Uma decisão pequena que o analisador forçou
+
+A primeira versão do código fazia o pump de estados conhecer o tipo `AccountEvent`. O
+analisador de acoplamento (`CA1506`, limite 30 tipos por classe) recusou o build. A solução
+foi publicar no canal **uma linha de texto pronta**, montada no callback, e não o evento: o
+pump não precisa saber o que é uma conta para escrevê-la na ordem certa. O limite existe
+justamente para provocar esse tipo de separação antes que a classe vire um ponto de encontro
+de tudo.
+
+---
+
+## Aula 04 — Times and Trades: do preço observado ao negócio realizado
 
 Até a Aula 03 e seu retrofit, a pergunta respondida pelo projeto era: **“Que cotação a DLL
 acabou de informar para este instrumento?”** A nova etapa acrescenta outra pergunta:
@@ -69,8 +147,8 @@ cada ordem que está esperando execução e não envia ordens ao mercado.
 
 Uma *sprint*, aqui, é uma etapa de implementação com resultado verificável. Cada etapa
 resolveu uma parte da viagem do dado: sair da memória da DLL, entrar no processamento C#,
-chegar ao arquivo e ter essa trajetória conferida. Esses marcos complementam a Aula 03;
-não representam uma renumeração automática da série para Aula 04.
+chegar ao arquivo e ter essa trajetória conferida. Juntas, as quatro sprints formam a
+Aula 04 da série.
 
 **Sprint 1 — aprender a receber o dado corretamente.** O callback V2 entrega uma referência
 à memória nativa. Essa referência não é um objeto C# que podemos guardar para ler quando
@@ -365,11 +443,11 @@ com a ProfitDLL funciona e depois construa o seu, com os cuidados que a sua oper
 
 1. Abre o diretório do dia em `Relatorios/AAAAMMDD/`, ao lado do executável
 2. Lê a configuração copiada de `src/appsettings.json` para o diretório do executável
-3. Prepara os destinos T&T quando habilitado e carrega a `ProfitDLL.dll` (Win64) do diretório da aplicação
+3. Prepara os destinos T&T quando habilitado, registra "destinos prontos" e carrega a `ProfitDLL.dll` (Win64) do diretório da aplicação
 4. Chama `DLLInitializeLogin` uma única vez
 5. Registra os callbacks de cotação, ticker inválido e negócios V2 quando habilitados
 6. Publica os estados recebidos em uma fila e os processa fora da thread nativa
-7. Registra cada estado antes de aplicar a transição que ele causa
+7. Registra cada estado antes de aplicar a transição que ele causa, e cada conta cadastrada anunciada após o login, uma vez por corretora e conta
 8. Anuncia a conexão apenas quando os quatro estiverem satisfeitos
 9. Assina todos os instrumentos configurados, ou desfaz o que já assinou e encerra
 10. Consome cotações e, quando habilitado, negócios em segundo plano, com arquivos separados por instrumento
@@ -680,7 +758,7 @@ DLLNelogica.sln
     ├── ProfitDLL.dll               biblioteca nativa da Nelogica
     ├── Application/                execução, console e encerramento
     ├── Configuration/              leitura e validação do JSON
-    ├── Connection/                 estados, fila e máquina de conexão
+    ├── Connection/                 estados, contas, fila e máquina de conexão
     ├── Interop/                    P/Invoke, sessão, callbacks e guardas de processo
     ├── Logging/                    fila assíncrona, tee e relatórios do dia
     ├── MarketData/                 assinaturas, canais de cotação, métricas e amostragem

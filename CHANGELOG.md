@@ -7,6 +7,61 @@ alterações técnicas em detalhe.
 Os marcos seguem a sequência das aulas, não versionamento semântico. Trabalhos estruturais
 entre aulas recebem um nome próprio e não avançam artificialmente a numeração da série.
 
+## [Aula 05 — contas cadastradas e relatório sem pontas soltas] - 2026-09-22
+
+As contas que a DLL anuncia após o login passaram a ser registradas no relatório do dia, e a
+preparação do Times and Trades ganhou uma linha de conclusão. As quatro sprints de Times and
+Trades passam a ser referidas como Aula 04 da série.
+
+### Por que esta etapa foi necessária
+
+O `TAccountCallback` é entregue a `DLLInitializeLogin` desde a Aula 01, mas seu tratador
+estava vazio. Antes de qualquer aula sobre ordens, o relatório precisa mostrar com quais
+contas o login pode operar. Ao mesmo tempo, a linha "preparação de arquivos iniciada" abria
+o log sem nenhuma linha que a fechasse: o sucesso ficava implícito na inicialização da DLL.
+
+### Adicionado
+
+- `AccountEvent`, com corretora (id e nome), conta e titular, e a formatação da linha
+  "Conta cadastrada".
+- `ConnectionPumpEvent`: o canal do pump de estados passou a transportar também linhas
+  informativas, escritas pelo consumidor na ordem em que a DLL as anunciou.
+- `ConnectionStateEventPump.TryPublishLine`, usado pelo callback de contas. O callback
+  continua apenas publicando; nenhum I/O na thread nativa.
+- Deduplicação no `ProfitCallbackBridge`: cada par corretora+conta gera uma única linha; a
+  primeira ocorrência vence.
+- `TradeRuntimePipeline.ReportDestinationsReady`, chamado assim que o consumidor de T&T sinaliza
+  pronto e antes de `DLLInitializeLogin`, registrando "destinos prontos" com os instrumentos.
+
+### Alterado
+
+- README: nova seção da Aula 05, tabela de evolução com a Aula 04 (sprints de T&T) e a
+  Aula 05, lista de passos e estrutura atualizadas.
+- Linhas informativas, como as de conta, seguem a mesma regra dos estados: nada é escrito
+  depois do pedido de encerramento.
+
+### Descobertas registradas
+
+- A DLL reanuncia a lista completa de contas várias vezes na mesma sessão. Em uma execução
+  foram duas passagens; em outra, seis, com conteúdo variável: quatro passagens com quatro
+  contas (incluindo simulador) e duas passagens só com as contas reais.
+- A mesma conta pode ser anunciada sob dois ids de corretora distintos. O projeto registra o
+  que a DLL informa e não interpreta.
+- O limite de acoplamento `CA1506` recusou a primeira versão, em que o pump conhecia
+  `AccountEvent`. Publicar a linha pronta manteve o pump desacoplado do tipo de origem.
+
+### Verificado
+
+- Build Release em Windows x64: zero avisos e zero erros; **101 testes aprovados**, nenhum
+  ignorado. SDK 9.0.318.
+- Execução real em **22/09/2026, 12:49, UTC−03:00**, com 30 segundos de captura: quatro
+  contas registradas uma única vez, quatro assinaturas aceitas, 364 cotações e 1.917 eventos
+  T&T confirmados, nenhum descarte, pico de fila 74, drenagem em 1,801 ms, `DLLFinalize`
+  retornando zero e processo encerrando com código zero após `Ctrl+C`.
+- Credenciais foram apagadas da cópia de saída após cada execução; o modelo versionado
+  permaneceu com campos vazios. A alteração diagnóstica que exibia os estados de roteamento
+  foi revertida antes do commit.
+
 ## [Times and Trades — Sprint 4: captura real e conferência dos arquivos] - 2026-09-11
 
 As três primeiras sprints construíram a recepção, o processamento e a gravação. Faltava

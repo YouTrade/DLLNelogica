@@ -5,8 +5,10 @@ namespace DLLNelogica.Connection;
 internal sealed class ConnectionStateEventPump
 {
     private readonly ConnectionStateMachine _stateMachine;
-    private readonly Channel<ConnectionStateEvent> _events =
-        Channel.CreateUnbounded<ConnectionStateEvent>(new UnboundedChannelOptions
+    // O canal transporta estados de conexão e contas anunciadas pela DLL: ambos chegam na
+    // thread nativa, logo após o login, e precisam virar linha de log fora dela e em ordem.
+    private readonly Channel<ConnectionPumpEvent> _events =
+        Channel.CreateUnbounded<ConnectionPumpEvent>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = false,
@@ -23,10 +25,15 @@ internal sealed class ConnectionStateEventPump
     internal bool HasFailed => Volatile.Read(ref _failureDetected) != 0;
 
     internal bool TryPublish(int stateType, int result) =>
-        _events.Writer.TryWrite(new ConnectionStateEvent(
+        _events.Writer.TryWrite(ConnectionPumpEvent.FromState(new ConnectionStateEvent(
             DateTimeOffset.Now,
             (ConnectionStateType)stateType,
-            result));
+            result)));
+
+    // Linha informativa que precisa sair na ordem em que a DLL a anunciou (ex.: contas após o
+    // login). O texto já vem pronto para manter o pump desacoplado do tipo de origem.
+    internal bool TryPublishLine(string line) =>
+        _events.Writer.TryWrite(ConnectionPumpEvent.FromLine(line));
 
     internal void Complete() => _events.Writer.TryComplete();
 
@@ -34,8 +41,19 @@ internal sealed class ConnectionStateEventPump
     {
         try
         {
-            await foreach (var stateEvent in _events.Reader.ReadAllAsync().ConfigureAwait(false))
+            await foreach (var pumpEvent in _events.Reader.ReadAllAsync().ConfigureAwait(false))
             {
+                if (pumpEvent.Line is { } line)
+                {
+                    if (!shutdownRequested.IsCancellationRequested)
+                    {
+                        TryWriteLine(line);
+                    }
+
+                    continue;
+                }
+
+                var stateEvent = pumpEvent.State!.Value;
                 // Nada é registrado depois do pedido de encerramento: a DLL reemite os estados
                 // da sessão sendo derrubada e traduzi-los como falha de login ou de licença
                 // faria uma execução bem-sucedida parecer um erro de credencial.
@@ -202,3 +220,4 @@ internal sealed class ConnectionStateEventPump
         }
     }
 }
+

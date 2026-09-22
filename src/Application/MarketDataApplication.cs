@@ -32,6 +32,7 @@ internal sealed class MarketDataApplication
             if (trades is not null)
             {
                 await trades.Ready.WaitAsync(shutdown.Source.Token).ConfigureAwait(false);
+                trades.ReportDestinationsReady();
             }
 
             exitCode = await _session.RunAsync(options, shutdown).ConfigureAwait(false);

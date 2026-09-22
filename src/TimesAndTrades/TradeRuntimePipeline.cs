@@ -28,6 +28,12 @@ internal sealed class TradeRuntimePipeline : IAsyncDisposable
     internal Task Completion => _consumer;
 
     internal Task Ready => _pump.Ready;
+
+    // Fecha o par com "preparação de arquivos iniciada": só é chamado depois que Ready liberou,
+    // ou seja, todos os destinos foram abertos e a DLL pode subir.
+    internal void ReportDestinationsReady() =>
+        _reporter.Session(
+            $"Times and Trades | destinos prontos: {string.Join(", ", _pump.Snapshot.Instruments.Keys.Order(StringComparer.Ordinal))}");
     internal TradeMetricsSnapshot Snapshot => _pump.Snapshot;
 
     internal Task<bool> CompleteAndDrainAsync(TimeSpan? timeout = null) =>
