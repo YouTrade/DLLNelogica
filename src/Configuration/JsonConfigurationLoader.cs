@@ -61,6 +61,7 @@ internal sealed class JsonConfigurationLoader
         EnsureRequiredIntegerProperty(marketData, "MarketData", "ReportIntervalSeconds");
         ValidateInstruments(marketData);
         ValidateTimesAndTrades(root);
+        OrderSequenceValidation.ValidateShape(root);
     }
 
     private static void ValidateTimesAndTrades(JsonElement root)

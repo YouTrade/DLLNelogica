@@ -1,6 +1,3 @@
-using System.Reflection;
-using System.Runtime.InteropServices;
-
 namespace DLLNelogica.Interop;
 
 internal sealed class ProfitNativeApi : IProfitApi
@@ -13,7 +10,7 @@ internal sealed class ProfitNativeApi : IProfitApi
     public string LibraryPath { get; }
 
     public void ConfigureLibraryResolver() =>
-        NativeLibrary.SetDllImportResolver(typeof(ProfitFunctions).Assembly, ResolveProfitDll);
+        new ProfitLibraryResolver(LibraryPath).Configure();
 
     public int Initialize(
         string activationKey,
@@ -35,6 +32,21 @@ internal sealed class ProfitNativeApi : IProfitApi
             null,
             callbacks.Progress,
             callbacks.TinyBook);
+
+    public int SetAssetListInfoCallbackV2(TAssetListInfoCallbackV2 callback) => ProfitFunctions.SetAssetListInfoCallbackV2(callback);
+    public int RequestTickerInfo(string ticker, string exchange) => ProfitFunctions.RequestTickerInfo(ticker, exchange);
+
+    public long SendOrder(ref TConnectorSendOrder order) => ProfitFunctions.SendOrder(ref order);
+    public int SendCancelOrderV2(ref TConnectorCancelOrder order) => ProfitFunctions.SendCancelOrderV2(ref order);
+    public int GetOrderDetails(ref TConnectorOrderOut order) => ProfitFunctions.GetOrderDetails(ref order);
+
+    public int GetAccountCount() => ProfitFunctions.GetAccountCount();
+
+    public int GetAccounts(int startSource, int startDest, int count, TConnectorAccountIdentifierOut[] accounts) =>
+        ProfitFunctions.GetAccounts(startSource, startDest, count, accounts);
+
+    public int GetAccountDetails(ref TConnectorTradingAccountOut account) =>
+        ProfitFunctions.GetAccountDetails(ref account);
 
     public int FinalizeServices() => ProfitFunctions.DLLFinalize();
 
@@ -62,16 +74,4 @@ internal sealed class ProfitNativeApi : IProfitApi
     public int UnsubscribeTicker(string ticker, string exchange) =>
         ProfitFunctions.UnsubscribeTicker(ticker, exchange);
 
-    private nint ResolveProfitDll(
-        string libraryName,
-        Assembly assembly,
-        DllImportSearchPath? searchPath)
-    {
-        if (!string.Equals(libraryName, "ProfitDLL.dll", StringComparison.OrdinalIgnoreCase))
-        {
-            return nint.Zero;
-        }
-
-        return NativeLibrary.Load(LibraryPath);
-    }
 }

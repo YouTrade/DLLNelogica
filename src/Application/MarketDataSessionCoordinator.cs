@@ -33,13 +33,13 @@ internal sealed class MarketDataSessionCoordinator
         var connection = await _connectionState.WaitForConnectionAsync(
             ConnectionTimeoutSeconds,
             shutdown.Source.Token).ConfigureAwait(false);
-        return await HandleConnectionResultAsync(connection, options.MarketData, shutdown)
+        return await HandleConnectionResultAsync(connection, options, shutdown)
             .ConfigureAwait(false);
     }
 
     internal bool Shutdown()
     {
-        _profitSession.StopAgentNameQueries();
+        _profitSession.StopNativeQueries();
         var unsubscribeResults = _subscriptions.UnsubscribeAll();
         var isSuccessful = unsubscribeResults.All(result => result.IsSuccessful);
         if (!ProfitProcessLifetime.IsFinalizationRequired)
@@ -60,7 +60,7 @@ internal sealed class MarketDataSessionCoordinator
 
     private async Task<int> HandleConnectionResultAsync(
         ConnectionWaitResult connection,
-        MarketDataOptions marketData,
+        ApplicationOptions options,
         ConsoleShutdown shutdown)
     {
         if (!connection.IsConnected || shutdown.Source.IsCancellationRequested)
@@ -69,7 +69,7 @@ internal sealed class MarketDataSessionCoordinator
         }
 
         TryWriteLine("Conexão confirmada pelos quatro estados obrigatórios.");
-        var subscription = _subscriptions.SubscribeAll(marketData.Instruments);
+        var subscription = _subscriptions.SubscribeAll(options.MarketData.Instruments);
         if (!subscription.IsSuccessful)
         {
             TryWriteLine(
@@ -79,7 +79,8 @@ internal sealed class MarketDataSessionCoordinator
         }
 
         TryWriteLine("Todos os instrumentos foram assinados. Pressione Ctrl+C para encerrar.");
-        await shutdown.WaitAsync().ConfigureAwait(false);
+        // A captura já está assinada; contas têm consumidor e falhas independentes.
+        await ConnectedSessionTasks.RunAsync(_profitSession, options, shutdown).ConfigureAwait(false);
         if (shutdown.WasRequestedByUser)
         {
             TryWriteLine("Encerramento solicitado pelo usuário.");

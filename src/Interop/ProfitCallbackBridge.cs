@@ -12,15 +12,13 @@ internal sealed class ProfitCallbackBridge
     private MarketPriceEventPump? _marketPriceEvents;
     private CancellationTokenSource? _shutdownRequested;
 
-    // A DLL reanuncia a lista completa de contas a cada atualização interna (várias vezes por
-    // sessão, com conteúdo que pode variar). Cada corretora+conta vira uma única linha de log.
-    private readonly HashSet<string> _announcedAccounts = [];
-
     internal ProfitCallbackBridge(ConnectionStateEventPump stateEvents, IProfitApi profitApi)
     {
         _stateEvents = stateEvents;
         _tradeTranslator = new ProfitTradeTranslator(profitApi);
     }
+
+    internal double? LatestPrice(string key) => Volatile.Read(ref _marketPriceEvents)?.LatestPrice(key);
 
     internal Guid TradeSessionId => _tradeTranslator.SessionId;
 
@@ -83,26 +81,6 @@ internal sealed class ProfitCallbackBridge
     internal void HandleState(int stateType, int result)
     {
         if (!_stateEvents.TryPublish(stateType, result) && !ProfitProcessLifetime.HasFinalizationStarted)
-        {
-            SignalFailureNoThrow();
-        }
-    }
-
-    internal void HandleAccount(int brokerId, string? brokerName, string? accountId, string? ownerName)
-    {
-        // Somente publicar: o callback nativo nunca executa I/O. A linha de log sai no consumidor
-        // do pump de estados, na mesma ordem em que a DLL anunciou login e contas.
-        lock (_announcedAccounts)
-        {
-            if (!_announcedAccounts.Add($"{brokerId}|{accountId}"))
-            {
-                return;
-            }
-        }
-
-        var account = new AccountEvent(DateTimeOffset.Now, brokerId, brokerName, accountId, ownerName);
-        if (!_stateEvents.TryPublishLine(account.Describe()) &&
-            !ProfitProcessLifetime.HasFinalizationStarted)
         {
             SignalFailureNoThrow();
         }

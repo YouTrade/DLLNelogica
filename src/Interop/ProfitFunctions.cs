@@ -7,6 +7,19 @@ internal static class ProfitFunctions
     private const string DllPath = "ProfitDLL.dll";
 
     [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int SetAssetListInfoCallbackV2(TAssetListInfoCallbackV2 callback);
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int RequestTickerInfo([MarshalAs(UnmanagedType.LPWStr)] string ticker,
+        [MarshalAs(UnmanagedType.LPWStr)] string exchange);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern long SendOrder(ref TConnectorSendOrder order);
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int SendCancelOrderV2(ref TConnectorCancelOrder order);
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int GetOrderDetails(ref TConnectorOrderOut order);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
     internal static extern int DLLInitializeLogin(
         [MarshalAs(UnmanagedType.LPWStr)] string activationKey,
         [MarshalAs(UnmanagedType.LPWStr)] string user,
@@ -22,6 +35,16 @@ internal static class ProfitFunctions
         THistoryTradeCallback? newHistoryCallback,
         TProgressCallBack progressCallBack,
         TNewTinyBookCallBack newTinyBookCallBack);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int GetAccountCount();
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int GetAccounts(int startSource, int startDest, int count,
+        [In, Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] TConnectorAccountIdentifierOut[] accounts);
+
+    [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+    internal static extern int GetAccountDetails(ref TConnectorTradingAccountOut account);
 
     [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
     internal static extern int DLLFinalize();

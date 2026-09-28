@@ -8,6 +8,110 @@ Os marcos seguem a sequência das aulas, não versionamento semântico. Cada aul
 o trabalho estrutural feito logo depois de uma aula (o *retrofit*) fica registrado dentro dela,
 e as etapas internas de uma aula maior aparecem como subseções, não como marcos próprios.
 
+## Aula 06 (2026-09-28): envio de ordens e lista de contas por consulta
+
+A aplicação passa a enviar uma sequência de ordens descrita no `appsettings.json`, acompanhar
+cada ordem até o estado final e cancelar as limitadas. A lista de contas deixa de vir do
+`TAccountCallback` e passa a ser obtida por consulta ativa.
+
+### Por que esta aula foi necessária
+
+Enviar ordem exige saber para qual conta, e a lista da Aula 05 não era confiável. Em
+28/09/2026 o log interno da DLL registrou a criação de quatro contas (corretoras 15, 18,
+51301 e 51401), mas o callback só disparou para duas. A conta de simulador não chegou à
+aplicação. Dias antes, no mesmo login, haviam chegado as quatro. Um callback avisa quando
+algo acontece; não garante que tudo foi recebido.
+
+### Adicionado
+
+- Consulta de contas por `GetAccountCount`, `GetAccounts` e `GetAccountDetails`, repetida a
+  cada dois segundos depois da conexão confirmada. O relatório só recebe linha quando a conta
+  é nova ou mudou.
+- Seção `OrderSequence` no `appsettings.json`: liga/desliga geral, conta de destino, senha de
+  roteamento, ativo, quantidade, tick, liga/desliga de cada uma das quatro ordens, offsets
+  das limitadas e as cinco esperas.
+- `OrderSequence`, que percorre os passos, calcula o preço das limitadas a partir do último
+  preço recebido (idade máxima de 30 segundos) e o alinha ao tick.
+- `ProfitOrderGateway`, com `SendOrder`, `SendCancelOrderV2` e `GetOrderDetails` sob a mesma
+  trava usada pelo encerramento.
+- `OrderStatusInfo`, que classifica os 27 códigos de `TConnectorOrderStatus` em final,
+  intermediário ou desconhecido.
+- Conferência do `TickSize` configurado contra o tick informado pela DLL para o ativo.
+- Limite de 30 segundos para o acompanhamento final das ordens.
+- Linha no relatório quando a sequência está desligada na configuração.
+- Testes de layout de memória das estruturas de conta e de ordem, conferidos contra a
+  declaração Delphi, além de testes de sequência, concorrência, encerramento e falha de leitura.
+
+### Alterado
+
+- O `TAccountCallback` continua sendo entregue ao `DLLInitializeLogin`, porque a assinatura
+  exige, mas o corpo está vazio.
+- O encerramento passou a interromper consultas de contas e chamadas de ordens antes de
+  `DLLFinalize`; uma chamada em andamento termina primeiro.
+- O modelo versionado traz a sequência desligada, `BrokerId` zero e conta e senha vazias.
+- README: nova seção da Aula 06, seção da Aula 05 condensada, passos, configuração, cuidados
+  e estrutura atualizados.
+
+### Removido
+
+- `AccountEvent`, `ConnectionPumpEvent` e a publicação de linhas pelo pump de estados,
+  criados na Aula 05 para o caminho do callback.
+- A distinção entre conta de simulador e conta real por id de corretora. A DLL não expõe esse
+  atributo e o id do simulador varia entre logins.
+
+### Corrigido durante a aula
+
+- `GetOrderDetails` era chamado com a versão 1 de `TConnectorOrderOut` e a DLL 4.0.0.41
+  respondia `NL_VERSION_NOT_SUPPORTED`. A leitura passou a usar versão 0, inclusive nos
+  identificadores internos. O envio continua na versão 1, que a DLL aceita.
+- Com a leitura recusada, a aplicação repetia a chamada a cada segundo e não terminava. A
+  recusa de versão agora desliga a leitura na sessão, e o relatório final informa que o saldo
+  executado não foi confirmado.
+- O relatório registrava cada consulta. Passou a registrar mudanças de estado: a mesma
+  sequência foi de 161 para 35 linhas.
+- Depois de cancelar uma limitada, o relatório ainda dizia que o cancelamento dela havia sido
+  dispensado. A linha passou a sair só quando a ordem chega a estado final sem que o
+  cancelamento tenha sido pedido.
+- Os estados 204 (ordem não criada) e 205 (cancelada pelo administrador) não eram finais. O
+  estado 3 (encerrada no dia) deixou de ser final, por não comprovar término definitivo.
+
+### Descobertas registradas
+
+- O callback de contas coincide, no log interno da DLL, com eventos de lista de posições, e
+  não com a criação da conta. É correlação observada, não comportamento documentado.
+- A consulta devolve o nome curto da corretora. A corretora 51401 é `Elliot-Warren -
+  DayTrade`, o que explica a mesma conta sob dois ids.
+- A DLL não informa se uma conta é de simulador. O nome da corretora é o único sinal.
+- Os exemplos oficiais divergem na versão de `TConnectorOrderOut`: C# usa 0 e Delphi usa 1.
+  Os exemplos são do pacote 4.0.0.42 e a DLL do projeto é a 4.0.0.41.
+- O estado 203 (criada no cliente) aparece logo após o envio e evolui em cerca de um segundo
+  para executada ou aberta. Era classificado como intermediário por inferência; a execução
+  confirmou.
+- A consulta periódica de contas e as chamadas de ordens usam travas diferentes. Na execução
+  real as duas rodaram ao mesmo tempo sem erro.
+
+### Verificado
+
+- Build Release em Windows x64: zero avisos e zero erros; **247 testes aprovados**, nenhum
+  ignorado. SDK 9.0.318. ProfitDLL 4.0.0.41 Win64.
+- Lista de contas por consulta: duas execuções reais seguidas em 28/09/2026, quatro contas em
+  cada uma, idênticas às registradas no log interno da DLL.
+- Sequência de ordens: execução real em **28/09/2026, de 12:11:44 a 12:12:10, UTC−03:00**, em
+  conta de simulador, com um contrato de WINV26.
+
+| Passo | Ordem | Preço | Estado final | Executada |
+|---|---|---:|---|---:|
+| 1 | Compra a mercado | mercado | executada | 1 |
+| 2 | Compra limitada | 183.950 | cancelada | 0 |
+| 3 | Venda a mercado | mercado | executada | 1 |
+| 4 | Venda limitada | 184.110 | cancelada | 0 |
+
+- Referências de 184.050 e 184.010, offsets de 100 pontos, preços alinhados ao tick de 5.
+  Cancelamentos confirmados um segundo depois do pedido. Saldo executado zero, sem aviso de
+  posição aberta. A sequência terminou sozinha e `DLLFinalize` retornou zero.
+- Nenhuma execução em conta real. Credenciais ficaram apenas na cópia de saída, ignorada pelo
+  Git; o modelo versionado permaneceu com campos vazios.
+
 ## Aula 05 (2026-09-22): contas cadastradas e relatório sem pontas soltas
 
 As contas que a DLL anuncia após o login passaram a ser registradas no relatório do dia, e a

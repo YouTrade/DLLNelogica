@@ -1,12 +1,13 @@
 # DLLNelogica — Projeto Educacional
 
-> Série **Programando o seu robô de trading com a DLL da Nelogica** — **Aula 05 concluída:
-> as contas cadastradas aparecem no relatório logo após o login, e a preparação do Times and
-> Trades passou a ter início e fim registrados.**
+> Série **Programando o seu robô de trading com a DLL da Nelogica** — **Aula 06 concluída:
+> a aplicação envia a sua primeira sequência de ordens, acompanha cada uma até o estado final
+> e passou a obter a lista de contas por consulta ativa, não mais por callback.**
 
 Exemplo didático em C# que demonstra, do zero, como estabelecer uma conexão com a
 **ProfitDLL da Nelogica**: autenticar, confirmar que todos os serviços subiram, assinar
-instrumentos, receber cotações e negócios realizados e finalizar a sessão de forma limpa.
+instrumentos, receber cotações e negócios realizados, listar as contas, enviar e cancelar
+ordens e finalizar a sessão de forma limpa.
 
 Este material foi escrito para ensino. O objetivo é que você entenda **cada decisão** —
 por que um callback não pode bloquear, por que um retorno `NL_OK` não significa "conectado",
@@ -23,86 +24,219 @@ por que um estado precisa ser travado e não reavaliado.
 | Aula 03 | 2026-09-06<br>2026-09-10 | Consumo de Market Data: assinatura de instrumentos e cotações<br>Retrofit: relatórios por instrumento e visão contínua do mercado |
 | Aula 04 | 2026-09-11 | Times and Trades em quatro sprints: contratos V2 e tradução segura; fila, classificação e participantes; arquivos próprios com confirmação após flush; captura real e reconciliação dos oito arquivos com 101 testes |
 | Aula 05 | 2026-09-22 | Contas cadastradas no relatório e par início/fim da preparação de T&T |
+| Aula 06 | 2026-09-28 | Envio e cancelamento de ordens por sequência configurável; lista de contas por consulta ativa |
 
 O histórico curado, incluindo o estado original da Aula 01 e as decisões do retrofit, está
 em [CHANGELOG.md](CHANGELOG.md). O README descreve sempre o comportamento atual do projeto.
 
 ---
 
+## Aula 06 — a primeira ordem, e por que a lista de contas mudou de fonte
+
+Até a Aula 05 a aplicação só observava: cotações, negócios e as contas do login. Esta aula
+faz a aplicação **agir**. Ela envia quatro ordens, acompanha cada uma até o estado final e
+cancela as que ficaram abertas. Antes disso, porém, foi preciso corrigir a base: a lista de
+contas da Aula 05 não era confiável, e não se envia ordem para uma conta que pode nem
+aparecer na lista.
+
+### Por que a lista de contas mudou de fonte
+
+Na Aula 05 as contas vinham do `TAccountCallback`. Em execuções seguidas no mesmo login, o
+resultado variou. A comparação com o log interno da própria DLL mostrou o motivo:
+
+| Corretora | A DLL criou a conta internamente | O callback avisou a aplicação |
+|---|---|---|
+| 18 | sim | sim |
+| 51301 | sim | sim |
+| 51401 | sim | **não** |
+| 15 (simulador) | sim | **não** |
+
+A DLL conhecia as quatro contas. O callback só disparou para duas. As duas que chegaram são
+as que tiveram, logo em seguida, um evento de lista de posições no log interno — o que
+sugere que o callback antigo está atrelado a esse evento, e não à criação da conta. Isso é
+inferência por correlação, não algo documentado no manual.
+
+A conclusão prática não depende da hipótese: **um callback avisa quando algo acontece; ele
+não garante que você recebeu tudo.** Para obter uma lista completa, pergunte.
+
+A aplicação agora consulta a DLL com `GetAccountCount`, `GetAccounts` e `GetAccountDetails`,
+depois que a conexão é confirmada, e repete a consulta a cada dois segundos. O relatório só
+recebe uma linha quando uma conta é nova ou mudou, então a repetição não aparece no log. O
+`TAccountCallback` continua sendo entregue ao `DLLInitializeLogin`, porque a assinatura da
+função exige, mas o corpo dele está vazio.
+
+Dois detalhes que a consulta revelou e o callback escondia: o nome da corretora vem na forma
+curta (`Terra`, e não a razão social), e a corretora 51401 se explica sozinha — é
+`Elliot-Warren - DayTrade`, por isso a mesma conta aparece sob dois ids.
+
+### A sequência de ordens
+
+A sequência é descrita no `appsettings.json` e roda sozinha depois que os instrumentos são
+assinados:
+
+| Passo | O que faz | Controle no JSON |
+|---|---|---|
+| 1 | espera, depois compra a mercado | `BuyMarket` |
+| 2 | espera, depois compra limitada abaixo do mercado | `BuyLimit`, `BuyLimitOffset` |
+| 3 | espera, depois venda a mercado | `SellMarket` |
+| 4 | espera, depois venda limitada acima do mercado | `SellLimit`, `SellLimitOffset` |
+| 5 | espera, depois cancela as limitadas que foram enviadas | — |
+
+```json
+"OrderSequence": {
+  "Enabled": true,
+  "BrokerId": 15,
+  "AccountId": "sua-conta",
+  "RoutingPassword": "sua-senha-de-roteamento",
+  "Ticker": "WINV26",
+  "Exchange": "F",
+  "Quantity": 1,
+  "TickSize": 5,
+  "BuyMarket": true,
+  "BuyLimit": true,
+  "BuyLimitOffset": 200,
+  "SellMarket": true,
+  "SellLimit": true,
+  "SellLimitOffset": 100,
+  "WaitSeconds": [30, 30, 30, 30, 30]
+}
+```
+
+- `WaitSeconds` tem sempre cinco valores, um para cada espera da tabela.
+- Um passo desligado continua esperando o seu tempo e registra `passo N desligado`. A ordem
+  dos demais não muda.
+- O offset é a distância em pontos do preço de referência: subtraído na compra, somado na
+  venda. Só é exigido quando a respectiva limitada está ligada.
+- O **preço de referência** é o último preço recebido pelo fluxo de cotações, com idade
+  máxima de 30 segundos. Sem cotação recente — mercado fechado, por exemplo — a limitada
+  não é enviada.
+- O preço calculado é alinhado ao tick: a compra arredonda para baixo, a venda para cima.
+  `TickSize` é conferido com o tick que a DLL informa para o ativo; se divergirem, nada é
+  enviado.
+- O ativo da sequência precisa estar na lista de `MarketData.Instruments`.
+
+### A conta de destino é escolha sua
+
+A lista de contas responde "com quais contas este login pode operar". O JSON responde "em
+qual delas eu quero operar". A aplicação cruza os dois e **nunca escolhe uma conta sozinha**:
+
+- O destino é o par `BrokerId` + `AccountId`. Só a conta não basta: a mesma conta pode
+  existir sob mais de uma corretora, e são destinos diferentes.
+- Se o par não estiver na lista que a DLL devolveu, nada é enviado e o relatório explica.
+- No modelo versionado `BrokerId` vem `0` e a sequência vem desligada. Os valores certos
+  estão nas linhas `Conta cadastrada` do seu próprio relatório.
+
+> **A DLL não informa se uma conta é de simulador ou real.** Não existe campo para isso, nem
+> no callback nem no `GetAccountDetails`. O único sinal é o nome da corretora, e o id do
+> simulador varia entre logins: em um deles é 15, em outro há relato de 15005. Por isso a
+> aplicação não tenta adivinhar. **Confira o nome da corretora no relatório antes de ligar a
+> sequência.** Se o destino for uma conta real, as ordens são reais.
+
+### O que a primeira execução real revelou
+
+A sequência passou nos testes automáticos e falhou na primeira execução com a DLL. Os três
+achados abaixo só apareceram ali.
+
+**1. A versão da estrutura é por chamada, não por projeto.** O envio usou a versão 1 de
+`TConnectorSendOrder` e foi aceito. A leitura com `GetOrderDetails` usou a versão 1 de
+`TConnectorOrderOut` e foi recusada 120 vezes com `NL_VERSION_NOT_SUPPORTED`. Na ProfitDLL
+4.0.0.41 a leitura exige versão 0, inclusive nos identificadores que vão dentro da estrutura.
+Os exemplos oficiais não concordam entre si nesse ponto — o de C# usa 0, o de Delphi usa 1 —
+e pertencem a um pacote mais novo que a DLL do projeto. A lição: **a referência final é a
+DLL que você está executando, não o exemplo.**
+
+**2. Uma falha que se repete precisa ser dita uma vez.** Com a leitura recusada, a aplicação
+repetia a mesma chamada a cada segundo e nunca terminava. Agora a recusa de versão é
+guardada, a leitura é desligada para a sessão e o relatório final diz com todas as letras que
+o saldo executado **não foi confirmado** — o que é diferente de dizer que ele é zero.
+
+**3. O acompanhamento precisa de um fim.** Depois do cancelamento, a aplicação acompanha as
+ordens por até 30 segundos. O relatório registra mudanças de estado, não cada consulta: a
+mesma sequência ocupava 161 linhas e passou a ocupar 35.
+
+Trecho da execução real, em conta de simulador:
+
+```
+12:11:49 Ordens: pedido passo=1 | ativo=WINV26:F | lado=1 | limitada=False | quantidade=1 | preço=-1
+12:11:49 Ordens: SendOrder retornou 26092812114338.
+12:11:49 Ordens: id=26092812114338 | estado=203 (criada no cliente) | classificação=intermediário | executada=0.
+12:11:50 Ordens: id=26092812114338 | estado=2 (executada) | classificação=final | executada=1.
+12:11:54 Ordens: referência=184050 | tick configurado=5 | preço alinhado=183950.
+12:11:54 Ordens: pedido passo=2 | ativo=WINV26:F | lado=1 | limitada=True | quantidade=1 | preço=183950
+12:11:54 Ordens: id=26092812114339 | estado=0 (aberta) | classificação=intermediário | executada=0.
+...
+12:12:09 Ordens: id=26092812114339 | SendCancelOrderV2 retornou 0; aguardando estado final.
+12:12:10 Ordens: id=26092812114339 | estado=4 (cancelada) | classificação=final | executada=0.
+12:12:10 Ordens: saldo executado observado nesta sequência=0; posição anterior da conta não consultada.
+```
+
+### Aceita, aberta, executada: o retorno de `SendOrder` não é o fim
+
+É a mesma lição da Aula 01, em que `NL_OK` não significava "conectado". `SendOrder` devolve
+um identificador local: a DLL aceitou o pedido, nada além disso. O que aconteceu com a ordem
+só se sabe consultando o estado.
+
+O enum `TConnectorOrderStatus` tem 27 códigos, e o manual dá os nomes, não as transições. A
+aplicação classifica cada um como **final**, **intermediário** ou **desconhecido**, com uma
+regra só: **na dúvida, não é final.** É preferível acompanhar uma ordem até o limite a
+declarar encerrada uma ordem que ainda pode executar.
+
+| Classificação | Códigos |
+|---|---|
+| Final | 2 executada, 4 cancelada, 8 rejeitada, 12 expirada, 15, 17 e 18 (parciais encerradas), 204 não criada, 205 cancelada pelo administrador |
+| Intermediário | 0, 1, 3, 5, 6, 7, 9, 10, 11, 13, 14, 16, 201, 202, 203, 206, 207 |
+| Desconhecido | 200, qualquer código fora do enum e ausência de leitura |
+
+### O que a sequência não faz
+
+- **Não zera posição.** Se a sequência terminar com saldo executado diferente de zero, ou com
+  alguma ordem sem estado final, o relatório avisa — e só. A decisão é sua.
+- **Não consulta a posição anterior da conta.** O saldo informado é o das ordens desta
+  sequência.
+- **Não reenvia.** Falha de leitura não provoca novo envio nem novo cancelamento.
+- **Não cancela no `Ctrl+C`.** Interromper no meio para os envios seguintes; ordens já
+  aceitas podem continuar pendentes. Confira no terminal.
+- **Não tem stop, OCO, alteração de ordem nem subcontas.**
+
+Uma falha na sequência de ordens não derruba o Market Data nem o Times and Trades.
+
+---
+
 ## Aula 05 — as contas atrás do login e o relatório sem pontas soltas
 
 Até a Aula 04 o projeto respondia duas perguntas: *que cotação chegou* e *que negócio foi
-feito*. Nenhuma delas diz **com quais contas este login pode operar**. Antes de qualquer aula
-sobre ordens, é preciso saber que contas a DLL enxerga — e é preciso que o relatório conte
-essa história sem deixar linhas sem explicação. Esta aula resolve as duas coisas, e a segunda
-começou por uma pergunta simples de quem lê o log: "essa linha está solta no início, o que ela
-faz?".
+feito*. Nenhuma delas diz **com quais contas este login pode operar**. Esta aula colocou as
+contas no relatório e fechou uma ponta solta na preparação do Times and Trades.
 
-### As contas chegam por callback, não por consulta
+> **A fonte das contas mudou na Aula 06.** Aqui elas vinham do `TAccountCallback`. Esse
+> caminho se mostrou incompleto e foi substituído por consulta ativa. O que esta aula
+> descobriu sobre o callback continua valendo como lição, e é o que está registrado abaixo.
 
-A ProfitDLL exporta funções de consulta — `GetAccountCount`, `GetAccounts`,
-`GetAccountDetails` — mas o caminho mais simples já estava no projeto desde a Aula 01, sem
-uso: o `TAccountCallback`, entregue a `DLLInitializeLogin` junto com o `TStateCallback`. Depois
-do login, a DLL chama esse callback uma vez por conta, informando corretora (id e nome), número
-da conta e titular. O tratador existia, mas estava vazio, com um comentário "aula futura".
+### O que o callback de contas ensinou
 
-A implementação seguiu a regra que atravessa a série: **o callback nativo só publica**. A
-conta é convertida em uma linha de texto e entra no mesmo canal que já transporta os estados
-de conexão. O consumidor desse canal, fora da thread da DLL, escreve a linha no relatório.
-Usar o mesmo canal não foi economia: é o que garante que "Login: conectado" e as contas
-apareçam na ordem em que a DLL as anunciou, sem uma segunda fila para sincronizar.
+O `TAccountCallback` é entregue ao `DLLInitializeLogin` desde a Aula 01. Ao ligá-lo ao
+relatório, cada conta apareceu **duas vezes**. Uma rodada diagnóstica mostrou que a DLL
+reenvia a lista a cada atualização interna, várias vezes na mesma sessão: em uma execução
+foram duas passagens, em outra, seis, e o conteúdo variou entre elas.
 
-Trecho da execução real desta aula (titular omitido):
-
-```
-2026-09-22 12:49:32 [DLLNelogica] Times and Trades | sessao=73acb387-… | preparação de arquivos iniciada.
-2026-09-22 12:49:32 [DLLNelogica] Times and Trades | destinos prontos: PETR4:B, VALE3:B, WDOV26:F, WINV26:F
-2026-09-22 12:49:32 [DLLNelogica] DLLInitializeLogin retornou NL_OK; registrando callbacks de Market Data.
-2026-09-22 12:49:33 [DLLNelogica] Ativação: licença válida.
-2026-09-22 12:49:33 [DLLNelogica] Login: conectado.
-2026-09-22 12:49:33 [DLLNelogica] Conta cadastrada | corretora=15 (Simulador) | conta=12703 | titular=…
-2026-09-22 12:49:33 [DLLNelogica] Conta cadastrada | corretora=18 (TERRA INVESTIMENTOS DTVM LTDA) | conta=7319 | titular=…
-2026-09-22 12:49:33 [DLLNelogica] Conta cadastrada | corretora=51301 (Elliot-Warren) | conta=1416607 | titular=…
-2026-09-22 12:49:33 [DLLNelogica] Conta cadastrada | corretora=51401 (Elliot-Warren) | conta=1416607 | titular=…
-2026-09-22 12:49:33 [DLLNelogica] Market Data: conectado e pronto para receber cotações.
-2026-09-22 12:49:33 [DLLNelogica] Conexão confirmada pelos quatro estados obrigatórios.
-```
-
-### O que a primeira versão revelou: a DLL reanuncia a lista
-
-Na primeira execução cada conta apareceu **duas vezes**. Uma rodada diagnóstica, com os
-estados de roteamento temporariamente visíveis, mostrou que não era um bug do canal: a DLL
-reenvia a **lista completa** de contas a cada atualização interna, várias vezes na mesma
-sessão. Em uma execução foram duas passagens; em outra, seis — e o conteúdo variou entre
-elas: quatro passagens com quatro contas (incluindo a de simulador), duas passagens só com as
-duas contas reais.
-
-A lição é a mesma da Aula 03 com o handshake de roteamento: **o que a DLL repete, a aplicação
-filtra — e registra uma vez.** O tratador do callback guarda o par corretora+conta já
-anunciado e ignora as repetições. A primeira ocorrência vence, porque é ela que aparece na
-ordem correta do log. A mesma conta pode aparecer sob dois ids de corretora (51301 e 51401
-acima); o projeto registra o que a DLL informa e não tenta interpretar.
-
-Uma consequência prática: o número de contas exibido pode variar entre execuções, porque
-depende do que a DLL anunciou naquele momento. Isso é comportamento da DLL, não do código.
+A lição é a mesma da Aula 03 com o handshake de roteamento: **o que a DLL repete, a
+aplicação filtra — e registra uma vez**, pelo par corretora + conta. Essa regra sobreviveu à
+troca de fonte: a consulta ativa da Aula 06 também só escreve quando a conta é nova ou mudou.
 
 ### O par início/fim da preparação de T&T
 
-A linha "preparação de arquivos iniciada" já existia desde a Sprint 3 da Aula 04: antes de
-subir a DLL, o consumidor de T&T abre um arquivo por instrumento, e a aplicação espera esse
-sinal de pronto. Se um arquivo não abre, a captura nem começa. O problema era de leitura: a
-linha anunciava um início cujo fim ficava implícito na linha seguinte, "DLLInitializeLogin
-retornou NL_OK". Agora, assim que o sinal de pronto é liberado, o relatório registra
-"destinos prontos" com a lista dos instrumentos, e o par fecha antes da DLL ser iniciada.
+A linha "preparação de arquivos iniciada" existe desde a Aula 04: antes de subir a DLL, o
+consumidor de T&T abre um arquivo por instrumento, e a aplicação espera esse sinal de
+pronto. Se um arquivo não abre, a captura nem começa. O problema era de leitura: a linha
+anunciava um início cujo fim ficava implícito na linha seguinte. Agora, assim que o sinal de
+pronto é liberado, o relatório registra "destinos prontos" com a lista dos instrumentos, e o
+par fecha antes da DLL ser iniciada.
 
-### Uma decisão pequena que o analisador forçou
-
-A primeira versão do código fazia o pump de estados conhecer o tipo `AccountEvent`. O
-analisador de acoplamento (`CA1506`, limite 30 tipos por classe) recusou o build. A solução
-foi publicar no canal **uma linha de texto pronta**, montada no callback, e não o evento: o
-pump não precisa saber o que é uma conta para escrevê-la na ordem certa. O limite existe
-justamente para provocar esse tipo de separação antes que a classe vire um ponto de encontro
-de tudo.
+```
+Times and Trades | sessao=73acb387-… | preparação de arquivos iniciada.
+Times and Trades | destinos prontos: PETR4:B, VALE3:B, WDOV26:F, WINV26:F
+DLLInitializeLogin retornou NL_OK; registrando callbacks de Market Data.
+```
 
 ---
 
@@ -422,14 +556,18 @@ O que ele **não** tem:
 
 - Nenhuma proteção de credenciais — elas ficam em texto puro no `appsettings.json`
 - Nenhuma reconexão automática, retentativa ou recuperação de falha
-- Nenhum tratamento de ordens, posições ou contas
+- Nenhuma gestão de posição: a sequência de ordens é didática e fixa, sem stop, OCO,
+  alteração de ordem ou zeragem automática
+- Nenhuma distinção entre conta de simulador e conta real — a DLL não informa, e a aplicação
+  envia para a conta que você configurar
 - Nenhuma análise das cotações — elas são registradas em arquivo, não interpretadas
 - Nenhum banco de dados, auditoria ou monitoramento
 - Homologação integral de T&T ainda pendente — a captura real curta e a suíte estão documentadas no relatório
 - Nenhuma retenção ou expurgo dos relatórios — eles se acumulam, e o T&T acrescenta volume
   ao que já era gravado pelo fluxo de cotações
 
-**Não use este código para operar dinheiro real.** Use-o para aprender como a interoperabilidade
+**Não use este código para operar dinheiro real.** A partir da Aula 06 ele envia ordens:
+com a sequência ligada e uma conta real configurada, as ordens são reais. Use-o para aprender como a interoperabilidade
 com a ProfitDLL funciona e depois construa o seu, com os cuidados que a sua operação exige.
 
 ---
@@ -442,14 +580,16 @@ com a ProfitDLL funciona e depois construa o seu, com os cuidados que a sua oper
 4. Chama `DLLInitializeLogin` uma única vez
 5. Registra os callbacks de cotação, ticker inválido e negócios V2 quando habilitados
 6. Publica os estados recebidos em uma fila e os processa fora da thread nativa
-7. Registra cada estado antes de aplicar a transição que ele causa, e cada conta cadastrada anunciada após o login, uma vez por corretora e conta
+7. Registra cada estado antes de aplicar a transição que ele causa
 8. Anuncia a conexão apenas quando os quatro estiverem satisfeitos
 9. Assina todos os instrumentos configurados, ou desfaz o que já assinou e encerra
-10. Consome cotações e, quando habilitado, negócios em segundo plano, com arquivos separados por instrumento
-11. Publica uma amostra do mercado a cada `ReportIntervalSeconds`
-12. Mantém o processo vivo até `Ctrl+C`
-13. Desassina os instrumentos em ordem reversa
-14. Chama `DLLFinalize` e drena os eventos pendentes antes de sair
+10. Consulta as contas do login a cada dois segundos e registra cada uma quando é nova ou muda
+11. Quando habilitada, executa a sequência de ordens na conta configurada e acompanha cada ordem até o estado final
+12. Consome cotações e, quando habilitado, negócios em segundo plano, com arquivos separados por instrumento
+13. Publica uma amostra do mercado a cada `ReportIntervalSeconds`
+14. Mantém o processo vivo até `Ctrl+C`
+15. Interrompe consultas e envios, e desassina os instrumentos em ordem reversa
+16. Chama `DLLFinalize` e drena os eventos pendentes antes de sair
 
 Cada um desses passos deixa rastro nos relatórios do dia.
 
@@ -645,9 +785,17 @@ instrumento somam exatamente as 1.325 cotações que o resumo final reporta, com
     "Enabled": true,
     "ChannelCapacity": 16384,
     "ResolveAgentNames": true
+  },
+  "OrderSequence": {
+    "Enabled": false
   }
 }
 ```
+
+`OrderSequence.Enabled=false` mantém a aplicação só observando, e é como o modelo vem. A
+seção ausente tem o mesmo efeito. Os demais campos e o que cada um faz estão em
+[A sequência de ordens](#a-sequência-de-ordens). Rode primeiro com a sequência desligada,
+confira as linhas `Conta cadastrada` no `_Sessao.txt` e só então configure o destino.
 
 `Exchange` é a bolsa do instrumento: `F` para os futuros da BM&F, `B` para as ações da Bovespa.
 
@@ -719,6 +867,11 @@ está rastreado pelo Git, o `.gitignore` não o protege: preencha-o só na sua c
 antes de cada commit. Credenciais commitadas continuam no histórico mesmo depois de apagadas
 do arquivo.
 
+**A senha de roteamento autoriza ordens.** Ela fica no mesmo `appsettings.json`, em texto
+puro, e vale o mesmo cuidado das credenciais de login. A aplicação nunca a escreve em
+relatório, exceção ou mensagem de erro — inclusive substitui as mensagens nativas de falha de
+envio por um texto fixo, porque elas poderiam conter a senha.
+
 **A ProfitDLL escreve arquivos no diretório de trabalho.** Ao inicializar, ela cria `Logs/`,
 `database/`, `PopupManagerV2/`, `MarketHours2/`, `roteamento/`, algumas DLLs do OpenSSL e
 arquivos `.dat`. Isso é esperado — só não deixe esses artefatos entrarem no seu controle de
@@ -753,10 +906,11 @@ DLLNelogica.sln
     ├── ProfitDLL.dll               biblioteca nativa da Nelogica
     ├── Application/                execução, console e encerramento
     ├── Configuration/              leitura e validação do JSON
-    ├── Connection/                 estados, contas, fila e máquina de conexão
-    ├── Interop/                    P/Invoke, sessão, callbacks e guardas de processo
+    ├── Connection/                 estados, relatório de contas, fila e máquina de conexão
+    ├── Interop/                    P/Invoke, sessão, callbacks, contas, ordens e guardas de processo
     ├── Logging/                    fila assíncrona, tee e relatórios do dia
     ├── MarketData/                 assinaturas, canais de cotação, métricas e amostragem
+    ├── Orders/                     sequência de ordens, acompanhamento e classificação de estados
     └── TimesAndTrades/             canal, interpretação, cache, arquivos e métricas de negócios
 ```
 
@@ -769,6 +923,12 @@ usam quantidade de 64 bits, data nativa em `SystemTime` e flags de edição. O n
 fica enraizado em `ProfitCallbackRoots`, junto dos existentes, até o processo terminar.
 A consulta de nomes aguarda a inicialização aceita e é interrompida antes da finalização:
 uma consulta já iniciada termina antes de `DLLFinalize`.
+
+Desde a Aula 06 a camada também importa `GetAccountCount`, `GetAccounts`,
+`GetAccountDetails`, `SendOrder`, `SendCancelOrderV2` e `GetOrderDetails`. Essas são chamadas
+que a aplicação faz, não callbacks que ela recebe, e por isso têm uma regra própria: todas
+passam por uma trava que o encerramento também usa. Uma chamada em andamento termina antes de
+`DLLFinalize`, e nenhuma começa depois do pedido de encerramento.
 
 Continua proibido fazer I/O, bloquear ou executar regra de negócio diretamente na thread de
 callback. Os callbacks de cotação e de ticker inválido apenas publicam em canais e retornam;

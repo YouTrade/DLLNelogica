@@ -9,6 +9,16 @@ internal sealed class MarketDataSnapshot
     private readonly Dictionary<string, InstrumentState> _instruments =
         new(StringComparer.OrdinalIgnoreCase);
 
+    internal double? LatestPrice(string key)
+    {
+        lock (_sync)
+        {
+            return _instruments.TryGetValue(key, out var state) &&
+                System.Diagnostics.Stopwatch.GetElapsedTime(state.ReceivedTimestamp) <= TimeSpan.FromSeconds(30)
+                ? state.Price : null;
+        }
+    }
+
     internal void Record(RawPriceChange priceChange)
     {
         lock (_sync)
@@ -20,6 +30,7 @@ internal sealed class MarketDataSnapshot
             }
 
             state.Price = priceChange.Price;
+            state.ReceivedTimestamp = priceChange.ReceivedTimestamp;
             state.IntervalTicks++;
         }
     }
@@ -43,6 +54,8 @@ internal sealed class MarketDataSnapshot
 
     private sealed class InstrumentState
     {
+        internal long ReceivedTimestamp { get; set; }
+
         internal double Price { get; set; }
 
         internal long IntervalTicks { get; set; }

@@ -33,6 +33,7 @@ internal static class ConfigurationValidator
         ValidateInstruments(options.MarketData.Instruments, issues);
         ReportDestinationValidator.Validate(options, issues);
 
+        OrderSequenceValidation.Validate(options, issues);
         return issues;
     }
 

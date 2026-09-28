@@ -5,4 +5,7 @@ internal readonly record struct RawPriceChange(
     string NativeDateText,
     uint NativeSequenceNumber,
     long ArrivalSequence,
-    double Price);
+    double Price)
+{
+    internal long ReceivedTimestamp { get; init; } = System.Diagnostics.Stopwatch.GetTimestamp();
+}

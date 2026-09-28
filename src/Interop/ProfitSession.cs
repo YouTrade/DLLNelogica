@@ -7,6 +7,7 @@ internal sealed class ProfitSession
     private readonly IProfitApi _profitApi;
     private readonly ProfitCallbackBridge _callbackBridge;
     private readonly ProfitAgentNameLookup _agentNames;
+    private readonly ProfitAccountMonitor _accounts;
     private bool _callbacksRegistered;
 
     internal ProfitSession(IProfitApi profitApi, ProfitCallbackBridge callbackBridge)
@@ -14,7 +15,11 @@ internal sealed class ProfitSession
         _profitApi = profitApi;
         _callbackBridge = callbackBridge;
         _agentNames = new ProfitAgentNameLookup(profitApi);
+        _accounts = new ProfitAccountMonitor(profitApi);
+        Orders = new ProfitOrderGateway(profitApi, callbackBridge);
     }
+
+    internal ProfitOrderGateway Orders { get; }
 
     internal bool CanReceiveTrades => _callbackBridge.HasTradeSink;
 
@@ -71,11 +76,13 @@ internal sealed class ProfitSession
             {
                 ProfitProcessLifetime.MarkInitializationAccepted();
                 _agentNames.Start();
+                _accounts.Start();
+                Orders.Start();
                 return ProfitInitializationResult.Accepted();
             }
 
             return ProfitInitializationResult.Failed(
-                $"DLLInitializeLogin falhou: {FormatNativeResult(nativeResult)}.");
+                NativeCallResult.Completed("DLLInitializeLogin", nativeResult).Message);
         }
         catch (DllNotFoundException)
         {
@@ -97,11 +104,19 @@ internal sealed class ProfitSession
         }
     }
 
-    internal void StopAgentNameQueries() => _agentNames.StopAndWait();
+    internal Task MonitorAccountsAsync(CancellationToken stopping) =>
+        Task.Run(() => _accounts.RunAsync(stopping), CancellationToken.None);
+
+    internal void StopNativeQueries()
+    {
+        Orders.StopAndWait();
+        _accounts.StopAndWait();
+        _agentNames.StopAndWait();
+    }
 
     internal ProfitFinalizationResult FinalizeOnce()
     {
-        _agentNames.StopAndWait();
+        StopNativeQueries();
         if (!ProfitProcessLifetime.TryBeginFinalization())
         {
             return ProfitFinalizationResult.NotRequired();
@@ -153,14 +168,6 @@ internal sealed class ProfitSession
             : NativeCallResult.Failed(
                 "SetTradeCallbackV2",
                 new InvalidOperationException("O pipeline de Times and Trades não está conectado."));
-
-    private static string FormatNativeResult(int result)
-    {
-        var numericResult = $"{result} (0x{unchecked((uint)result):X8})";
-        return Enum.IsDefined(typeof(NResult), result)
-            ? $"{(NResult)result} — {numericResult}"
-            : $"NResult desconhecido — {numericResult}";
-    }
 
 #pragma warning disable CA1031 // Toda falha nativa precisa virar resultado para permitir DLLFinalize.
     private static NativeCallResult ExecuteNativeCall(string operation, Func<int> call)

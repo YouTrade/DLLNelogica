@@ -84,16 +84,7 @@ internal static class ProfitCallbackRoots
         string? accountId,
         string? ownerName)
     {
-        var bridge = Volatile.Read(ref _activeBridge);
-        try
-        {
-            bridge?.HandleAccount(brokerId, brokerName, accountId, ownerName);
-        }
-        catch
-        {
-            ProfitProcessLifetime.SignalCallbackFailure();
-            bridge?.SignalFailureNoThrow();
-        }
+        // Obrigatório no login e enraizado por processo; a lista vem de GetAccount*.
     }
 
     private static void HandleNewDaily(

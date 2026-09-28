@@ -80,6 +80,37 @@ internal sealed class FakeProfitApi : IProfitApi
         return 0;
     }
 
+    internal TAssetListInfoCallbackV2? AssetInfoCallback { get; private set; }
+    internal double NativeTick { get; set; } = 5;
+    public int SetAssetListInfoCallbackV2(TAssetListInfoCallbackV2 callback) { AssetInfoCallback = callback; return 0; }
+    public int RequestTickerInfo(string ticker, string exchange)
+    {
+        AssetInfoCallback?.Invoke(new TAssetID { Ticker = ticker, Exchange = exchange },
+            null, null, 1, 1000, 1, 0, 0, NativeTick, 1, null, null, null, null, null);
+        return 0;
+    }
+
+    internal Func<TConnectorSendOrder, long>? OnSendOrder { get; set; }
+    internal Func<TConnectorCancelOrder, int>? OnCancelOrder { get; set; }
+    internal delegate int OrderDetailsHandler(ref TConnectorOrderOut order);
+    internal OrderDetailsHandler? OnOrderDetails { get; set; }
+    public long SendOrder(ref TConnectorSendOrder order) => OnSendOrder?.Invoke(order) ?? -1;
+    public int SendCancelOrderV2(ref TConnectorCancelOrder order) => OnCancelOrder?.Invoke(order) ?? -1;
+    public int GetOrderDetails(ref TConnectorOrderOut order) => OnOrderDetails?.Invoke(ref order) ?? -1;
+
+    internal Func<int>? OnAccountCount { get; set; }
+    internal Func<int, int, int, TConnectorAccountIdentifierOut[], int>? OnAccounts { get; set; }
+    internal delegate int AccountDetailsHandler(ref TConnectorTradingAccountOut account);
+    internal AccountDetailsHandler? OnAccountDetails { get; set; }
+
+    public int GetAccountCount() => OnAccountCount?.Invoke() ?? 0;
+
+    public int GetAccounts(int startSource, int startDest, int count, TConnectorAccountIdentifierOut[] accounts) =>
+        OnAccounts?.Invoke(startSource, startDest, count, accounts) ?? 0;
+
+    public int GetAccountDetails(ref TConnectorTradingAccountOut account) =>
+        OnAccountDetails?.Invoke(ref account) ?? (int)NResult.NL_NOT_FOUND;
+
     public int FinalizeServices()
     {
         FinalizationCalls++;

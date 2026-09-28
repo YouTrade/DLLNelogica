@@ -43,6 +43,8 @@ internal sealed class MarketPriceEventPump
             });
     }
 
+    internal double? LatestPrice(string key) => _snapshot.LatestPrice(key);
+
     internal bool HasFailed =>
         Volatile.Read(ref _priceConsumerFailure) != 0 ||
         Volatile.Read(ref _invalidTickerConsumerFailure) != 0;

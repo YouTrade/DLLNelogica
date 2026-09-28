@@ -28,5 +28,18 @@ internal interface IProfitApi
 
     int UnsubscribeTicker(string ticker, string exchange);
 
+    int SetAssetListInfoCallbackV2(TAssetListInfoCallbackV2 callback);
+    int RequestTickerInfo(string ticker, string exchange);
+
+    long SendOrder(ref TConnectorSendOrder order);
+    int SendCancelOrderV2(ref TConnectorCancelOrder order);
+    int GetOrderDetails(ref TConnectorOrderOut order);
+
+    int GetAccountCount();
+
+    int GetAccounts(int startSource, int startDest, int count, TConnectorAccountIdentifierOut[] accounts);
+
+    int GetAccountDetails(ref TConnectorTradingAccountOut account);
+
     int FinalizeServices();
 }
