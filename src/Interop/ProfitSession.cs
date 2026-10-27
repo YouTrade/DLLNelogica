@@ -28,22 +28,27 @@ internal sealed class ProfitSession
 
     internal ProfitInitializationResult Initialize(CredentialsOptions credentials)
     {
-        if (!OperatingSystem.IsWindows())
+        // Fake/API de teste não carrega a ProfitDLL: o gate de host Windows/x64 vale só
+        // para o cliente nativo. Sem isso a suíte determinística morre em Linux/CI.
+        if (_profitApi is ProfitNativeApi)
         {
-            return ProfitInitializationResult.Failed(
-                "A ProfitDLL somente pode ser carregada em um processo Windows.");
-        }
+            if (!OperatingSystem.IsWindows())
+            {
+                return ProfitInitializationResult.Failed(
+                    "A ProfitDLL somente pode ser carregada em um processo Windows.");
+            }
 
-        if (!Environment.Is64BitProcess)
-        {
-            return ProfitInitializationResult.Failed(
-                "A ProfitDLL Win64 exige que o processo seja executado em arquitetura x64.");
-        }
+            if (!Environment.Is64BitProcess)
+            {
+                return ProfitInitializationResult.Failed(
+                    "A ProfitDLL Win64 exige que o processo seja executado em arquitetura x64.");
+            }
 
-        if (!File.Exists(_profitApi.LibraryPath))
-        {
-            return ProfitInitializationResult.Failed(
-                $"ProfitDLL.dll não foi encontrada no diretório da aplicação: {_profitApi.LibraryPath}");
+            if (!File.Exists(_profitApi.LibraryPath))
+            {
+                return ProfitInitializationResult.Failed(
+                    $"ProfitDLL.dll não foi encontrada no diretório da aplicação: {_profitApi.LibraryPath}");
+            }
         }
 
         if (!ProfitProcessLifetime.TryBeginInitialization())

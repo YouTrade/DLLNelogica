@@ -9,7 +9,12 @@ public sealed class TradeAbiTests
     [Fact]
     public void LayoutMatchesOfficialWin64Contract()
     {
-        Assert.True(OperatingSystem.IsWindows());
+        // xunit 2.9 não tem Assert.SkipUnless (é v3); no Linux o layout Win64 não é o alvo.
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         Assert.True(Environment.Is64BitProcess);
         Assert.Equal(16, Marshal.SizeOf<SystemTime>());
         Assert.Equal(64, Marshal.SizeOf<TConnectorTrade>());
